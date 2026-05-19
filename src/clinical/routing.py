@@ -4,12 +4,19 @@ the cardiovascular ML pipeline (see System Flowchart, Section 4).
 
 Decision boundary
 -----------------
-  Predicted Risk   │  Path
-  ─────────────────┼──────────────────────────────────────────
-  High             │  High-Risk Path → Cardiac Radioablation (SBRT)
-                   │    └─ BED formula validation (α/β = 10 Gy)
-  Low / Medium     │  Low/Medium-Risk Path → Medication Intensity Calibration
-                   │    └─ GRACE Risk Score Calibration
+  Condition                                    │  Path
+  ─────────────────────────────────────────────┼──────────────────────────────
+  risk_category == "High"                      │  High-Risk Path →
+    OR (risk_category == "Medium"              │    Cardiac Radioablation (SBRT)
+        AND has_arrhythmia == True)            │    └─ BED validation (α/β=10 Gy)
+  ─────────────────────────────────────────────┼──────────────────────────────
+  All other cases (Low, or Medium w/o          │  Low/Medium-Risk Path →
+    arrhythmia)                                │    Medication Intensity Calibration
+                                               │    └─ GRACE Risk Score Calibration
+
+Spec reference (T3.2):
+  "if risk_category == 'High' and has_arrhythmia → SBRT branch,
+   else → Medication branch"
 
 Both paths converge at the MIMIC-IV Patient Metadata Merge step, after which
 a second XGBoost model produces an Intervention Type & Intensity Recommendation,
@@ -46,6 +53,26 @@ SBRT_ABLATIVE_THRESHOLD_GY  = 100.0  # minimum BED (Gy) for ablative intent
 
 
 # ---------------------------------------------------------------------------
+# Routing decision helper
+# ---------------------------------------------------------------------------
+
+def _should_route_to_sbrt(risk_level: RiskLevel, has_arrhythmia: bool) -> bool:
+    """
+    Return True if the patient should be routed to the SBRT (high-risk) path.
+
+    Rules (T3.2 spec):
+      • risk_level == HIGH                         → always SBRT
+      • risk_level == MEDIUM AND has_arrhythmia    → SBRT (arrhythmia escalation)
+      • everything else                            → Medication path
+    """
+    if risk_level == RiskLevel.HIGH:
+        return True
+    if risk_level == RiskLevel.MEDIUM and has_arrhythmia:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Route output dataclass
 # ---------------------------------------------------------------------------
 
@@ -62,11 +89,14 @@ class RouteResult:
         Predicted risk category from the upstream classifier.
     confidence_score : float
         Model confidence (0–1) for the predicted risk level.
+    has_arrhythmia : bool
+        Whether the patient has a documented arrhythmia.
+        Acts as a secondary escalation trigger for Medium-risk patients.
     path : str
         Human-readable label for the selected clinical path.
 
-    For High-Risk patients
-    ----------------------
+    For High-Risk / Arrhythmia-escalated patients
+    ----------------------------------------------
     bed_result : BEDResult | None
         BED calculation result.
     bed_valid : bool
@@ -74,8 +104,8 @@ class RouteResult:
     bed_validation_message : str
         Plain-English BED validation summary.
 
-    For Low/Medium-Risk patients
-    ----------------------------
+    For Low/Medium-Risk patients (no arrhythmia escalation)
+    --------------------------------------------------------
     grace_result : GRACEResult | None
         GRACE score calculation result.
     medication_intensity : str | None
@@ -93,6 +123,7 @@ class RouteResult:
     patient_id: Any
     risk_level: RiskLevel
     confidence_score: float
+    has_arrhythmia: bool
     path: str
 
     # High-risk SBRT fields
@@ -109,8 +140,9 @@ class RouteResult:
     warnings: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
+        arrhythmia_tag = " [arrhythmia]" if self.has_arrhythmia else ""
         lines = [
-            f"Patient {self.patient_id} — Risk: {self.risk_level.value} "
+            f"Patient {self.patient_id} — Risk: {self.risk_level.value}{arrhythmia_tag} "
             f"(confidence {self.confidence_score:.2%})",
             f"  Path: {self.path}",
         ]
@@ -132,7 +164,7 @@ class RouteResult:
 
 def _calibrate_medication_intensity(grace_result: GRACEResult) -> str:
     """
-    Map GRACE risk category + score to a medication intensity tier.
+    Map GRACE risk category to a medication intensity tier.
 
     Returns one of: "Standard", "Intensified", "Maximal"
     """
@@ -140,12 +172,12 @@ def _calibrate_medication_intensity(grace_result: GRACEResult) -> str:
         return "Standard"
     if grace_result.risk_category == "Intermediate":
         return "Intensified"
-    # High GRACE score even on the Low/Med overall risk path → maximal medical therapy
+    # High GRACE score on the Low/Med overall risk path → maximal medical therapy
     return "Maximal"
 
 
 # ---------------------------------------------------------------------------
-# High-risk SBRT path
+# High-risk / SBRT path
 # ---------------------------------------------------------------------------
 
 def _route_high_risk(
@@ -154,11 +186,20 @@ def _route_high_risk(
     total_dose_gy: float,
     n_fractions: int,
     alpha_beta_gy: float,
+    escalation_reason: str,
 ) -> tuple[BEDResult, bool, str, dict]:
     """
     Execute the High-Risk path: BED validation for cardiac SBRT.
 
-    Returns (bed_result, bed_valid, message, calibration_features).
+    Parameters
+    ----------
+    escalation_reason : str
+        Human-readable reason this patient reached the SBRT path
+        (e.g. "High risk" or "Medium risk + arrhythmia").
+
+    Returns
+    -------
+    (bed_result, bed_valid, message, calibration_features)
     """
     bed_result, bed_valid, bed_msg = validate_sbrt_bed(
         total_dose_gy=total_dose_gy,
@@ -175,6 +216,7 @@ def _route_high_risk(
 
     calibration_features = {
         "intervention_type": "SBRT",
+        "escalation_reason": escalation_reason,
         "total_dose_gy": total_dose_gy,
         "n_fractions": n_fractions,
         "dose_per_fraction_gy": bed_result.dose_per_fraction_gy,
@@ -197,7 +239,9 @@ def _route_low_med_risk(
     """
     Execute the Low/Medium-Risk path: GRACE calibration + medication intensity.
 
-    Returns (grace_result, medication_intensity, calibration_features).
+    Returns
+    -------
+    (grace_result, medication_intensity, calibration_features)
     """
     grace_result = compute_grace_score(
         age=int(patient["age"]),
@@ -244,27 +288,39 @@ def route_patient(
     sbrt_alpha_beta_gy: float = DEFAULT_ALPHA_BETA,
 ) -> RouteResult:
     """
-    Route a patient to the appropriate clinical pathway based on predicted risk.
+    Route a patient to the appropriate clinical pathway based on predicted risk
+    and arrhythmia status.
+
+    Routing logic (T3.2 spec)
+    -------------------------
+    SBRT path  : risk == High
+                 OR (risk == Medium AND has_arrhythmia)
+    Medication : all other cases
 
     Parameters
     ----------
     patient : dict
-        Patient feature dict. Required keys vary by path — see `_route_high_risk`
-        and `_route_low_med_risk` for details.  The following keys are always
-        expected for the Low/Med path:
+        Patient feature dict.
+
+        Keys consumed by this function:
+            patient_id      (optional, default "UNKNOWN")
+            has_arrhythmia  (optional bool, default False)
+
+        Keys required for the Low/Med path (passed to GRACE):
             age, heart_rate, systolic_bp
-        The following are optional (sensible defaults applied if absent):
+
+        Optional keys for GRACE (defaults applied if absent):
             creatinine_umol_l, killip_class, cardiac_arrest,
             st_deviation, elevated_enzymes
+
     predicted_risk : str | RiskLevel
-        Predicted risk level from the upstream Random Forest / XGBoost model.
-        Accepted string values (case-insensitive): "Low", "Medium", "High".
+        Predicted risk level: "Low", "Medium", or "High" (case-insensitive).
     confidence_score : float
         Model confidence score ∈ [0, 1].
     sbrt_total_dose_gy : float
-        Total SBRT dose to validate (High-Risk path only).
+        Total SBRT dose to validate (SBRT path only, default 25 Gy).
     sbrt_n_fractions : int
-        Number of SBRT fractions (High-Risk path only).
+        Number of SBRT fractions (SBRT path only, default 1).
     sbrt_alpha_beta_gy : float
         α/β ratio for BED calculation (default 10 Gy).
 
@@ -280,14 +336,25 @@ def route_patient(
 
     Examples
     --------
-    >>> patient = {"age": 68, "heart_rate": 92, "systolic_bp": 105,
-    ...            "creatinine_umol_l": 120, "killip_class": 2,
-    ...            "st_deviation": True}
-    >>> result = route_patient(patient, predicted_risk="High", confidence_score=0.91)
-    >>> result.path
+    High risk → SBRT regardless of arrhythmia:
+
+    >>> p = {"age": 68, "heart_rate": 92, "systolic_bp": 105}
+    >>> route_patient(p, "High", 0.91).path
     'High-Risk Path: Cardiac Radioablation (SBRT)'
+
+    Medium risk + arrhythmia → escalated to SBRT:
+
+    >>> p = {"age": 68, "heart_rate": 92, "systolic_bp": 120, "has_arrhythmia": True}
+    >>> route_patient(p, "Medium", 0.78).path
+    'High-Risk Path: Cardiac Radioablation (SBRT) [arrhythmia escalation]'
+
+    Medium risk without arrhythmia → Medication:
+
+    >>> p = {"age": 55, "heart_rate": 72, "systolic_bp": 138}
+    >>> route_patient(p, "Medium", 0.80).path
+    'Low/Medium-Risk Path: Medication Intensity Calibration'
     """
-    # Normalise risk level
+    # --- Normalise risk level ---
     if isinstance(predicted_risk, str):
         try:
             risk_level = RiskLevel(predicted_risk.capitalize())
@@ -299,27 +366,42 @@ def route_patient(
     else:
         risk_level = predicted_risk
 
-    patient_id = patient.get("patient_id", "UNKNOWN")
+    patient_id     = patient.get("patient_id", "UNKNOWN")
+    has_arrhythmia = bool(patient.get("has_arrhythmia", False))
     warnings: list[str] = []
 
-    # Low confidence warning
+    # Low-confidence warning
     if confidence_score < 0.6:
         warnings.append(
             f"Low model confidence ({confidence_score:.2%}). "
             "Clinical judgement should supersede automated routing."
         )
 
-    # --- Branch on risk level ---
-    if risk_level == RiskLevel.HIGH:
-        path = "High-Risk Path: Cardiac Radioablation (SBRT)"
+    # --- Core routing decision ---
+    go_sbrt = _should_route_to_sbrt(risk_level, has_arrhythmia)
+
+    if go_sbrt:
+        if risk_level == RiskLevel.HIGH:
+            escalation_reason = "High risk"
+            path = "High-Risk Path: Cardiac Radioablation (SBRT)"
+        else:
+            # Medium + arrhythmia escalation
+            escalation_reason = "Medium risk + arrhythmia"
+            path = "High-Risk Path: Cardiac Radioablation (SBRT) [arrhythmia escalation]"
+            warnings.append(
+                "Patient escalated from Medium to SBRT path due to documented arrhythmia."
+            )
+
         bed_result, bed_valid, bed_msg, cal_features = _route_high_risk(
             patient, warnings,
             sbrt_total_dose_gy, sbrt_n_fractions, sbrt_alpha_beta_gy,
+            escalation_reason,
         )
         return RouteResult(
             patient_id=patient_id,
             risk_level=risk_level,
             confidence_score=confidence_score,
+            has_arrhythmia=has_arrhythmia,
             path=path,
             bed_result=bed_result,
             bed_valid=bed_valid,
@@ -327,13 +409,14 @@ def route_patient(
             calibration_features={
                 "patient_id": patient_id,
                 "risk_level": risk_level.value,
+                "has_arrhythmia": has_arrhythmia,
                 "confidence_score": confidence_score,
                 **cal_features,
             },
             warnings=warnings,
         )
 
-    else:  # Low or Medium
+    else:
         path = "Low/Medium-Risk Path: Medication Intensity Calibration"
         grace_result, med_intensity, cal_features = _route_low_med_risk(
             patient, warnings
@@ -342,12 +425,14 @@ def route_patient(
             patient_id=patient_id,
             risk_level=risk_level,
             confidence_score=confidence_score,
+            has_arrhythmia=has_arrhythmia,
             path=path,
             grace_result=grace_result,
             medication_intensity=med_intensity,
             calibration_features={
                 "patient_id": patient_id,
                 "risk_level": risk_level.value,
+                "has_arrhythmia": has_arrhythmia,
                 "confidence_score": confidence_score,
                 **cal_features,
             },
@@ -368,11 +453,13 @@ def route_batch(
     """
     Route a batch of patients in a loop.
 
-    Parameters mirror `route_patient`; lists must be the same length.
-    Exceptions for individual patients are caught and stored as warnings.
+    All three lists must be the same length. Exceptions for individual patients
+    are caught and stored as warnings so one bad record does not abort the batch.
     """
     if not (len(patients) == len(predicted_risks) == len(confidence_scores)):
-        raise ValueError("patients, predicted_risks, and confidence_scores must have equal length.")
+        raise ValueError(
+            "patients, predicted_risks, and confidence_scores must have equal length."
+        )
 
     results: list[RouteResult] = []
     for patient, risk, conf in zip(patients, predicted_risks, confidence_scores):
@@ -384,6 +471,7 @@ def route_batch(
                 patient_id=pid,
                 risk_level=RiskLevel.LOW,
                 confidence_score=conf,
+                has_arrhythmia=bool(patient.get("has_arrhythmia", False)),
                 path="ERROR",
                 warnings=[f"Routing failed: {exc}"],
             ))
@@ -394,28 +482,23 @@ def route_batch(
 # Quick self-test
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    high_risk_patient = {
-        "patient_id": "P001",
-        "age": 74,
-        "heart_rate": 102,
-        "systolic_bp": 95,
-        "creatinine_umol_l": 180,
-        "killip_class": 3,
-        "cardiac_arrest": True,
-        "st_deviation": True,
-        "elevated_enzymes": True,
-    }
-    r_high = route_patient(high_risk_patient, "High", 0.93, sbrt_total_dose_gy=25.0, sbrt_n_fractions=1)
-    print(r_high.summary())
-    print()
+    base = dict(age=68, heart_rate=92, systolic_bp=105,
+                creatinine_umol_l=120, killip_class=2)
 
-    low_risk_patient = {
-        "patient_id": "P002",
-        "age": 55,
-        "heart_rate": 72,
-        "systolic_bp": 138,
-        "creatinine_umol_l": 85,
-        "killip_class": 1,
-    }
-    r_low = route_patient(low_risk_patient, "Low", 0.87)
-    print(r_low.summary())
+    # Case 1: High risk → SBRT
+    r1 = route_patient({**base, "patient_id": "P001"}, "High", 0.93)
+    print(r1.summary()); print()
+
+    # Case 2: Medium + arrhythmia → escalated to SBRT
+    r2 = route_patient({**base, "patient_id": "P002", "has_arrhythmia": True},
+                       "Medium", 0.78)
+    print(r2.summary()); print()
+
+    # Case 3: Medium, no arrhythmia → Medication
+    r3 = route_patient({**base, "patient_id": "P003"}, "Medium", 0.80)
+    print(r3.summary()); print()
+
+    # Case 4: Low → Medication
+    r4 = route_patient(dict(patient_id="P004", age=52, heart_rate=68,
+                            systolic_bp=138, creatinine_umol_l=85), "Low", 0.91)
+    print(r4.summary())
