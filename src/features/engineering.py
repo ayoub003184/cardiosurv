@@ -30,7 +30,7 @@ def derive_risk_label(row) -> str:
   elif row['HeartDisease'] == 1:
     has_high_oldpeak = row['Oldpeak'] >= 2.0
     has_angina = row['ExerciseAngina'] == 'Y'
-    has_severe_bp = row['bp_risk_level'] in ['Stage2', 'Crisis']
+    has_severe_bp = row['BP_RiskLevel'] in ['Stage2', 'Crisis']
     
     # 3. Any of the severe conditions are met -> High Risk
     if has_high_oldpeak or has_angina or has_severe_bp:
@@ -44,9 +44,9 @@ def derive_risk_label(row) -> str:
 
 # 5. The Main Engineering Pipeline
 def engineer(df):
-  df['age_bin'] = df['age'].apply(age_bin)
-  df['bp_risk_level'] = df['resting_bp'].apply(bp_risk_level)
-  df['hr_stress_index'] = df.apply(lambda row: hr_stress_index(row['max_hr'], row['age']), axis=1)
+  df['AgeBin'] = df['Age'].apply(age_bin)
+  df['BP_RiskLevel'] = df['RestingBP'].apply(bp_risk_level)
+  df['HeartRateStressIndex'] = df.apply(lambda row: hr_stress_index(row['MaxHR'], row['Age']), axis=1)
   df['RiskCategory'] = df.apply(derive_risk_label, axis=1)
 
   return df
