@@ -12,4 +12,4 @@ __pycache__/
 
 # OS
 .DS_Store
-data/processed/
+data/processed/merged.csv
