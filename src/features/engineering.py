@@ -46,7 +46,7 @@ def derive_risk_label(row) -> str:
 def engineer(df):
   df['age_bin'] = df['age'].apply(age_bin)
   df['bp_risk_level'] = df['resting_bp'].apply(bp_risk_level)
-  df['hr_stress_index'] = df.apply(lamda row: hr_stress_index(row['max_hr'], row['age']), axis=1)
+  df['hr_stress_index'] = df.apply(lambda row: hr_stress_index(row['max_hr'], row['age']), axis=1)
   df['RiskCategory'] = df.apply(derive_risk_label, axis=1)
 
   return df
