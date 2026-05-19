@@ -1,7 +1,7 @@
 import pandas as pd
 
 # Load datasets
-df1 = pd.read_csv("dataset1.csv")
+df1 = pd.read_csv("src/data/data/raw/heart.csv")
 df2 = pd.read_csv("dataset2.csv")
 
 # Merge on common column
