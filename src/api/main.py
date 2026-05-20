@@ -49,7 +49,7 @@ from src.db.models import AuditLog, Base, Patient, Prediction, Recommendation
 from src.db.session import engine, get_db
 from src.models.part1_classifier import load as load_model
 from src.models.part1_classifier import predict as classifier_predict
-from src.clinical.routing import route as clinical_route
+from src.clinical.routing import route_patient as clinical_route
 
 # ---------------------------------------------------------------------------
 # Create tables on startup (safe — does nothing if tables already exist)
@@ -349,31 +349,66 @@ def recommend(
 
     patient = db.query(Patient).filter(Patient.id == prediction.patient_id).first()
 
-    # Build input dict for routing.py
-    route_input = {
-        "patient_id":    prediction.patient_id,
-        "risk_category": prediction.risk_category,
-        "has_arrhythmia": body.has_arrhythmia,
-        "age":           patient.age if patient else 60,
-        "resting_bp":    float(patient.resting_bp) if patient else 120.0,
-        "oldpeak":       float(patient.oldpeak) if patient else 0.0,
-        "max_hr":        patient.max_hr if patient else 120,
+
+# Build input dict for routing.py
+    patient_dict = {
+        "patient_id":      prediction.patient_id,
+        "has_arrhythmia":  body.has_arrhythmia,
+        "age":             patient.age if patient else 60,
+        "heart_rate":      patient.max_hr if patient else 80,
+        "systolic_bp":     float(patient.resting_bp) if patient else 120.0,
     }
 
-    rec_result = clinical_route(route_input)
+    rec_result = clinical_route(
+        patient_dict,
+        predicted_risk=prediction.risk_category,
+        confidence_score=float(prediction.confidence),
+    )
+
+    # Map RouteResult dataclass to recommendation fields
+    is_sbrt = rec_result.path.lower().startswith("sbrt") or "sbrt" in rec_result.path.lower()
+    branch = "SBRT" if is_sbrt else "Medication"
+
+    if is_sbrt:
+        intervention_type = "cardiac_sbrt_25Gy_1fx"
+        intensity = "High"
+        bed_gy_val = float(rec_result.bed_result.bed_gy) if rec_result.bed_result else None
+        bed_valid_val = rec_result.bed_valid
+        grace_score_val = None
+        grace_cat_val = None
+        survival_without = 0.58
+        survival_with = 0.81
+    else:
+        intensity = rec_result.medication_intensity or "Moderate"
+        if intensity == "High":
+            intervention_type = "high_intensity_statin+beta_blocker+aspirin"
+        elif intensity == "Low":
+            intervention_type = "low_dose_statin+lifestyle"
+        else:
+            intervention_type = "beta_blocker+moderate_statin+aspirin"
+        bed_gy_val = None
+        bed_valid_val = None
+        grace_score_val = rec_result.grace_result.total_score if rec_result.grace_result else None
+        grace_cat_val = rec_result.grace_result.risk_category if rec_result.grace_result else None
+        if intensity == "High":
+            survival_without, survival_with = 0.65, 0.85
+        elif intensity == "Low":
+            survival_without, survival_with = 0.91, 0.96
+        else:
+            survival_without, survival_with = 0.81, 0.92
 
     rec = Recommendation(
         prediction_id=prediction.id,
-        branch=rec_result["branch"],
-        intervention_type=rec_result["intervention_type"],
-        intensity=rec_result["intensity"],
-        bed_gy=rec_result.get("bed_gy"),
-        bed_valid=rec_result.get("bed_valid"),
-        grace_score=rec_result.get("grace_score"),
-        grace_risk_category=rec_result.get("grace_risk_category"),
-        survival_without=rec_result["survival_without"],
-        survival_with=rec_result["survival_with"],
-        model_version=rec_result.get("model_version", "part2_recommender_v1.0"),
+        branch=branch,
+        intervention_type=intervention_type,
+        intensity=intensity,
+        bed_gy=bed_gy_val,
+        bed_valid=bed_valid_val,
+        grace_score=grace_score_val,
+        grace_risk_category=grace_cat_val,
+        survival_without=survival_without,
+        survival_with=survival_with,
+        model_version="part2_recommender_v1.0",
     )
     db.add(rec)
     db.commit()
