@@ -1,11 +1,16 @@
 """
 src/api/main.py
 ---------------
-CardioSurv API  —  mock scaffold (Task 3).
+CardioSurv API  —  real implementation (Task 4 Part B).
 
-Implements all 5 endpoints from docs/api_contract.md (Day-1 locked contract).
-All responses are hardcoded mock data. The `mock` scaffold is clearly signalled
-so Chiluba (Task 4) knows exactly what to replace with real DB/model calls.
+Replaces the mock scaffold (Task 3) with real DB + model calls:
+  - POST /api/v1/predict  → inserts Patient row → calls part1_classifier.predict()
+                            → inserts Prediction row → returns real response
+  - POST /api/v1/recommend → looks up Prediction → calls routing.py
+                             → inserts Recommendation row → returns real response
+  - GET  /api/v1/history   → queries predictions + recommendations from DB
+  - GET  /api/v1/patients/{patient_id} → DB join across 3 tables
+  - GET  /api/v1/health    → liveness probe (unchanged)
 
 Run:
     uvicorn src.api.main:app --reload
@@ -18,12 +23,13 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sqlalchemy.orm import Session
 
 from src.api.schemas import (
     # Health
@@ -37,11 +43,34 @@ from src.api.schemas import (
     # Patients
     PatientFullResponse, PatientVitals, PredictionRecord, RecommendationRecord,
     # Errors
-    ErrorResponse, ErrorBody,
+    ErrorResponse,
 )
+from src.db.models import AuditLog, Base, Patient, Prediction, Recommendation
+from src.db.session import engine, get_db
+from src.models.part1_classifier import load as load_model
+from src.models.part1_classifier import predict as classifier_predict
+from src.clinical.routing import route as clinical_route
 
 # ---------------------------------------------------------------------------
-# App + rate limiter (§7)
+# Create tables on startup (safe — does nothing if tables already exist)
+# ---------------------------------------------------------------------------
+
+Base.metadata.create_all(engine)
+
+# ---------------------------------------------------------------------------
+# Load model once at startup
+# ---------------------------------------------------------------------------
+
+try:
+    _MODEL_BUNDLE = load_model()
+    _MODEL_LOADED = True
+except FileNotFoundError:
+    _MODEL_BUNDLE = None
+    _MODEL_LOADED = False
+    print("[api] WARNING: model file not found — /predict will return 503")
+
+# ---------------------------------------------------------------------------
+# App + rate limiter
 # ---------------------------------------------------------------------------
 
 _START_TIME = time.time()
@@ -53,8 +82,6 @@ app = FastAPI(
     version="v1",
     description=(
         "Cardiovascular risk classification and intervention recommendation API.\n\n"
-        "> **Mock scaffold (Task 3)** — all responses are hardcoded. "
-        "Chiluba (Task 4) will replace hardcoded values with real DB + model calls.\n\n"
         "Contract: `docs/api_contract.md`"
     ),
     docs_url="/docs",
@@ -64,9 +91,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS — localhost dev origins + production Render URL placeholder (§0)
-# Replace RENDER_FRONTEND_URL with the actual Static Site URL once deployed.
-RENDER_FRONTEND_URL = "https://cardiosurv-frontend.onrender.com"  # update on deploy
+RENDER_FRONTEND_URL = "https://cardiosurv-frontend.onrender.com"
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,20 +105,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ---------------------------------------------------------------------------
-# Custom 404 error handler — enforces uniform error shape (§6)
+# Error handlers
 # ---------------------------------------------------------------------------
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=404,
-        content={"error": {
-            "code": "NOT_FOUND",
-            "message": exc.detail,
-            "details": [],
-        }},
+        content={"error": {"code": "NOT_FOUND", "message": exc.detail, "details": []}},
     )
 
 
@@ -110,10 +130,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         }},
     )
 
-
 # ---------------------------------------------------------------------------
-# Mock data store — in-memory, mimics what the DB will hold
-# (Chiluba replaces these dicts with real Postgres queries in Task 4)
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _uuid() -> str:
@@ -124,273 +142,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# Fixed UUIDs so mock responses are stable across restarts
-_PATIENT_IDS = {
-    "P1": "9c1b7e64-3a4f-4d3a-a4c8-2e5e7b71ed12",
-    "P2": "a2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
-    "P3": "b3c4d5e6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
-    "P4": "c4d5e6f7-b8c9-4d0e-1f2a-3b4c5d6e7f80",
-    "P5": "d5e6f780-c9d0-4e1f-2a3b-4c5d6e7f8091",
-}
-_PRED_IDS = {
-    "P1": "f0e9d8c7-b6a5-4948-83a1-72635849affe",
-    "P2": "e1f0a9b8-c7d6-4e5f-9283-6174950bfffe",
-    "P3": "d2e1b0a9-d8e7-4f60-a394-7285061cffff",
-    "P4": "c3d2c1b0-e9f0-4071-b4a5-8396172d0000",
-    "P5": "b4e3d2c1-f0a1-4182-c5b6-94a7283e1111",
-}
-_REC_IDS = {
-    "P1": "11111111-2222-3333-4444-555555555555",
-    "P2": "22222222-3333-4444-5555-666666666666",
-    "P3": "33333333-4444-5555-6666-777777777777",
-    "P4": "44444444-5555-6666-7777-888888888888",
-    "P5": "55555555-6666-7777-8888-999999999999",
-}
-
-# prediction_id → (patient_id, risk_category, age, has_arrhythmia)
-# This is what the mock /recommend looks up when given a prediction_id.
-_PREDICTIONS: dict[str, dict] = {
-    _PRED_IDS["P1"]: {
-        "patient_id": _PATIENT_IDS["P1"], "risk_category": "Medium",
-        "confidence": 0.83, "age": 56, "has_arrhythmia": False,
-        "probabilities": {"Low": 0.06, "Medium": 0.83, "High": 0.11},
-        "created_at": datetime(2026, 6, 20, 14, 21, 9, tzinfo=timezone.utc),
-    },
-    _PRED_IDS["P2"]: {
-        "patient_id": _PATIENT_IDS["P2"], "risk_category": "High",
-        "confidence": 0.91, "age": 72, "has_arrhythmia": True,
-        "probabilities": {"Low": 0.02, "Medium": 0.07, "High": 0.91},
-        "created_at": datetime(2026, 6, 20, 15, 0, 0, tzinfo=timezone.utc),
-    },
-    _PRED_IDS["P3"]: {
-        "patient_id": _PATIENT_IDS["P3"], "risk_category": "Low",
-        "confidence": 0.87, "age": 45, "has_arrhythmia": False,
-        "probabilities": {"Low": 0.87, "Medium": 0.10, "High": 0.03},
-        "created_at": datetime(2026, 6, 21, 9, 5, 0, tzinfo=timezone.utc),
-    },
-    _PRED_IDS["P4"]: {
-        "patient_id": _PATIENT_IDS["P4"], "risk_category": "Medium",
-        "confidence": 0.78, "age": 62, "has_arrhythmia": True,
-        "probabilities": {"Low": 0.09, "Medium": 0.78, "High": 0.13},
-        "created_at": datetime(2026, 6, 21, 11, 30, 0, tzinfo=timezone.utc),
-    },
-    _PRED_IDS["P5"]: {
-        "patient_id": _PATIENT_IDS["P5"], "risk_category": "High",
-        "confidence": 0.95, "age": 74, "has_arrhythmia": True,
-        "probabilities": {"Low": 0.01, "Medium": 0.04, "High": 0.95},
-        "created_at": datetime(2026, 6, 21, 14, 0, 0, tzinfo=timezone.utc),
-    },
-}
-
-# Build the full history list from the mock predictions
-_HISTORY_ROWS: list[HistoryItem] = [
-    HistoryItem(
-        prediction_id=_PRED_IDS["P1"], patient_id=_PATIENT_IDS["P1"],
-        created_at=datetime(2026, 6, 20, 14, 21, 9, tzinfo=timezone.utc),
-        age=56, risk_category="Medium", confidence=0.83,
-        branch="Medication", intervention_type="beta_blocker+moderate_statin+aspirin",
-        survival_without=0.81, survival_with=0.92, survival_improvement=0.11,
-    ),
-    HistoryItem(
-        prediction_id=_PRED_IDS["P2"], patient_id=_PATIENT_IDS["P2"],
-        created_at=datetime(2026, 6, 20, 15, 0, 0, tzinfo=timezone.utc),
-        age=72, risk_category="High", confidence=0.91,
-        branch="SBRT", intervention_type="cardiac_sbrt_25Gy_1fx",
-        survival_without=0.58, survival_with=0.81, survival_improvement=0.23,
-    ),
-    HistoryItem(
-        prediction_id=_PRED_IDS["P3"], patient_id=_PATIENT_IDS["P3"],
-        created_at=datetime(2026, 6, 21, 9, 5, 0, tzinfo=timezone.utc),
-        age=45, risk_category="Low", confidence=0.87,
-        branch="Medication", intervention_type="low_dose_statin+lifestyle",
-        survival_without=0.91, survival_with=0.96, survival_improvement=0.05,
-    ),
-    HistoryItem(
-        prediction_id=_PRED_IDS["P4"], patient_id=_PATIENT_IDS["P4"],
-        created_at=datetime(2026, 6, 21, 11, 30, 0, tzinfo=timezone.utc),
-        age=62, risk_category="Medium", confidence=0.78,
-        branch="SBRT", intervention_type="cardiac_sbrt_25Gy_1fx",
-        survival_without=0.65, survival_with=0.83, survival_improvement=0.18,
-    ),
-    HistoryItem(
-        prediction_id=_PRED_IDS["P5"], patient_id=_PATIENT_IDS["P5"],
-        created_at=datetime(2026, 6, 21, 14, 0, 0, tzinfo=timezone.utc),
-        age=74, risk_category="High", confidence=0.95,
-        branch="SBRT", intervention_type="cardiac_sbrt_25Gy_1fx",
-        survival_without=0.52, survival_with=0.79, survival_improvement=0.27,
-    ),
-    HistoryItem(
-        prediction_id="e9f0a1b2-c3d4-4e5f-6a7b-8c9d0e1f2a3b",
-        patient_id="f0a1b2c3-d4e5-4f60-7182-9a0b1c2d3e4f",
-        created_at=datetime(2026, 6, 22, 8, 0, 0, tzinfo=timezone.utc),
-        age=50, risk_category="Low", confidence=0.90,
-        branch="Medication", intervention_type="low_dose_statin+lifestyle",
-        survival_without=0.88, survival_with=0.95, survival_improvement=0.07,
-    ),
-    HistoryItem(
-        prediction_id="a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-        patient_id="b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
-        created_at=datetime(2026, 6, 22, 10, 15, 0, tzinfo=timezone.utc),
-        age=68, risk_category="High", confidence=0.88,
-        branch="SBRT", intervention_type="cardiac_sbrt_25Gy_1fx",
-        survival_without=0.55, survival_with=0.80, survival_improvement=0.25,
-    ),
-    HistoryItem(
-        prediction_id="b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
-        patient_id="c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
-        created_at=datetime(2026, 6, 22, 14, 45, 0, tzinfo=timezone.utc),
-        age=59, risk_category="Medium", confidence=0.74,
-        branch="Medication", intervention_type="beta_blocker+moderate_statin+aspirin",
-        survival_without=0.76, survival_with=0.89, survival_improvement=0.13,
-    ),
-    HistoryItem(
-        prediction_id="c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
-        patient_id="d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80",
-        created_at=datetime(2026, 6, 23, 9, 30, 0, tzinfo=timezone.utc),
-        age=66, risk_category="High", confidence=0.93,
-        branch="SBRT", intervention_type="cardiac_sbrt_25Gy_1fx",
-        survival_without=0.51, survival_with=0.78, survival_improvement=0.27,
-    ),
-    HistoryItem(
-        prediction_id="d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80",
-        patient_id="e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8091",
-        created_at=datetime(2026, 6, 23, 11, 0, 0, tzinfo=timezone.utc),
-        age=42, risk_category="Low", confidence=0.92,
-        branch="Medication", intervention_type="low_dose_statin+lifestyle",
-        survival_without=0.92, survival_with=0.97, survival_improvement=0.05,
-    ),
-]
-
-# Full patient records for GET /patients/{patient_id}
-_PATIENTS: dict[str, PatientFullResponse] = {
-    _PATIENT_IDS["P1"]: PatientFullResponse(
-        patient_id=_PATIENT_IDS["P1"],
-        created_at=datetime(2026, 6, 20, 14, 20, 55, tzinfo=timezone.utc),
-        vitals=PatientVitals(
-            age=56, sex="M", chest_pain_type="ATA", resting_bp=138,
-            cholesterol=230, fasting_bs=0, resting_ecg="Normal",
-            max_hr=150, exercise_angina="N", oldpeak=1.2, st_slope="Up",
-        ),
-        predictions=[PredictionRecord(
-            prediction_id=_PRED_IDS["P1"], risk_category="Medium", confidence=0.83,
-            probabilities=RiskProbabilities(Low=0.06, Medium=0.83, High=0.11),
-            model_version="part1_classifier_v1.0",
-            created_at=datetime(2026, 6, 20, 14, 21, 9, tzinfo=timezone.utc),
-        )],
-        recommendations=[RecommendationRecord(
-            recommendation_id=_REC_IDS["P1"], branch="Medication",
-            intervention_type="beta_blocker+moderate_statin+aspirin",
-            intensity="Moderate", bed_gy=None, bed_valid=None,
-            grace_score=132, grace_risk_category="Intermediate",
-            survival_without=0.81, survival_with=0.92,
-            model_version="part2_recommender_v1.0",
-            created_at=datetime(2026, 6, 20, 14, 21, 11, tzinfo=timezone.utc),
-        )],
-    ),
-    _PATIENT_IDS["P2"]: PatientFullResponse(
-        patient_id=_PATIENT_IDS["P2"],
-        created_at=datetime(2026, 6, 20, 14, 58, 0, tzinfo=timezone.utc),
-        vitals=PatientVitals(
-            age=72, sex="M", chest_pain_type="ASY", resting_bp=160,
-            cholesterol=280, fasting_bs=1, resting_ecg="LVH",
-            max_hr=110, exercise_angina="Y", oldpeak=3.5, st_slope="Flat",
-        ),
-        predictions=[PredictionRecord(
-            prediction_id=_PRED_IDS["P2"], risk_category="High", confidence=0.91,
-            probabilities=RiskProbabilities(Low=0.02, Medium=0.07, High=0.91),
-            model_version="part1_classifier_v1.0",
-            created_at=datetime(2026, 6, 20, 15, 0, 0, tzinfo=timezone.utc),
-        )],
-        recommendations=[RecommendationRecord(
-            recommendation_id=_REC_IDS["P2"], branch="SBRT",
-            intervention_type="cardiac_sbrt_25Gy_1fx",
-            intensity="High", bed_gy=87.5, bed_valid=True,
-            grace_score=None, grace_risk_category=None,
-            survival_without=0.58, survival_with=0.81,
-            model_version="part2_recommender_v1.0",
-            created_at=datetime(2026, 6, 20, 15, 0, 5, tzinfo=timezone.utc),
-        )],
-    ),
-    _PATIENT_IDS["P3"]: PatientFullResponse(
-        patient_id=_PATIENT_IDS["P3"],
-        created_at=datetime(2026, 6, 21, 9, 3, 0, tzinfo=timezone.utc),
-        vitals=PatientVitals(
-            age=45, sex="F", chest_pain_type="NAP", resting_bp=120,
-            cholesterol=200, fasting_bs=0, resting_ecg="Normal",
-            max_hr=170, exercise_angina="N", oldpeak=0.5, st_slope="Up",
-        ),
-        predictions=[PredictionRecord(
-            prediction_id=_PRED_IDS["P3"], risk_category="Low", confidence=0.87,
-            probabilities=RiskProbabilities(Low=0.87, Medium=0.10, High=0.03),
-            model_version="part1_classifier_v1.0",
-            created_at=datetime(2026, 6, 21, 9, 5, 0, tzinfo=timezone.utc),
-        )],
-        recommendations=[RecommendationRecord(
-            recommendation_id=_REC_IDS["P3"], branch="Medication",
-            intervention_type="low_dose_statin+lifestyle",
-            intensity="Low", bed_gy=None, bed_valid=None,
-            grace_score=59, grace_risk_category="Low",
-            survival_without=0.91, survival_with=0.96,
-            model_version="part2_recommender_v1.0",
-            created_at=datetime(2026, 6, 21, 9, 5, 8, tzinfo=timezone.utc),
-        )],
-    ),
-}
+def _log_request(db: Session, route: str, status_code: int,
+                 request_ip: str | None, latency_ms: int) -> None:
+    """Insert an audit_log row (best-effort — never raises)."""
+    try:
+        db.add(AuditLog(
+            route=route,
+            status_code=status_code,
+            request_ip=request_ip,
+            latency_ms=latency_ms,
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 # ---------------------------------------------------------------------------
-# Routing helpers
-# ---------------------------------------------------------------------------
-
-def _should_route_to_sbrt(risk_category: str, has_arrhythmia: bool) -> bool:
-    """Mirror src/clinical/routing.py logic."""
-    return risk_category == "High" or (risk_category == "Medium" and has_arrhythmia)
-
-
-def _mock_sbrt_response(
-    patient_id: str, prediction_id: str, rec_id: str
-) -> RecommendResponse:
-    return RecommendResponse(
-        recommendation_id=rec_id,
-        patient_id=patient_id,
-        prediction_id=prediction_id,
-        branch="SBRT",
-        intervention_type="cardiac_sbrt_25Gy_1fx",
-        intensity="High",                       # locked enum: Low|Moderate|High
-        bed_gy=87.5,
-        bed_valid=True,                          # realistic positive example
-        grace_score=None,
-        grace_risk_category=None,
-        survival_without=0.58,
-        survival_with=0.81,
-        model_version="part2_recommender_v1.0",
-        created_at=_now(),
-    )
-
-
-def _mock_medication_response(
-    patient_id: str, prediction_id: str, rec_id: str
-) -> RecommendResponse:
-    return RecommendResponse(
-        recommendation_id=rec_id,
-        patient_id=patient_id,
-        prediction_id=prediction_id,
-        branch="Medication",
-        intervention_type="beta_blocker+moderate_statin+aspirin",
-        intensity="Moderate",                    # locked enum: Low|Moderate|High
-        bed_gy=None,
-        bed_valid=None,
-        grace_score=132,
-        grace_risk_category="Intermediate",
-        survival_without=0.81,
-        survival_with=0.92,
-        model_version="part2_recommender_v1.0",
-        created_at=_now(),
-    )
-
-
-# ---------------------------------------------------------------------------
-# §1  GET /api/v1/health  (no rate limit per §7)
+# §1  GET /api/v1/health
 # ---------------------------------------------------------------------------
 
 @app.get(
@@ -400,21 +168,22 @@ def _mock_medication_response(
     tags=["Infrastructure"],
 )
 def health() -> HealthResponse:
-    """Liveness / readiness probe. No auth, no rate limit (§1)."""
+    """Liveness / readiness probe. No auth, no rate limit."""
+    model_tag = "v1.0" if _MODEL_LOADED else "NOT_LOADED"
     return HealthResponse(
         status="ok",
         version="v1",
         model_versions=ModelVersions(
-            part1_classifier="v1.0_MOCK",
-            part2_recommender="v1.0_MOCK",
-            survival_cox="v1.0_MOCK",
+            part1_classifier=model_tag,
+            part2_recommender="v1.0",
+            survival_cox="v1.0",
         ),
         uptime_seconds=round(time.time() - _START_TIME, 2),
     )
 
 
 # ---------------------------------------------------------------------------
-# §2  POST /api/v1/predict  (30/min/IP per §7)
+# §2  POST /api/v1/predict
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -423,70 +192,126 @@ def health() -> HealthResponse:
     responses={
         422: {"model": ErrorResponse, "description": "Field validation error."},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded."},
+        503: {"model": ErrorResponse, "description": "Model not loaded."},
     },
     summary="Predict cardiovascular risk",
     tags=["Prediction"],
 )
 @limiter.limit("30/minute")
-def predict(request: Request, body: PatientVitalsRequest) -> PredictResponse:
+def predict(
+    request: Request,
+    body: PatientVitalsRequest,
+    db: Session = Depends(get_db),
+) -> PredictResponse:
     """
-    Accept patient vital signs and return a Part-1 risk classification (§2).
-
-    Internally (mock): validates → generates UUIDs → returns hardcoded risk.
-    Real implementation (Task 4): inserts patients row → calls part1_predict() → inserts predictions row.
-
-    Risk derivation (from data contract §4):
-    - HeartDisease=0 → Low
-    - HeartDisease=1, no severe flags → Medium
-    - HeartDisease=1, any of [Oldpeak≥2, ExerciseAngina=Y, BP Stage2+] → High
+    Accept patient vital signs, persist them, run the Part-1 classifier,
+    persist the prediction, and return the risk classification.
     """
-    # Mock risk derivation — plausible logic based on field values
-    has_severe = (
-        body.oldpeak >= 2.0
-        or body.exercise_angina == "Y"
-        or body.resting_bp >= 140
-    )
-    has_disease_signal = (
-        body.chest_pain_type == "ASY"
-        or body.fasting_bs == 1
-        or body.resting_ecg in ("ST", "LVH")
-        or body.st_slope in ("Flat", "Down")
-    )
+    t0 = time.time()
 
-    if has_disease_signal and has_severe:
-        risk, low, med, high = "High",   0.04, 0.09, 0.87
-    elif has_disease_signal:
-        risk, low, med, high = "Medium", 0.06, 0.83, 0.11
+    if not _MODEL_LOADED or _MODEL_BUNDLE is None:
+        raise HTTPException(status_code=503, detail="Model not available.")
+
+    # 1. Insert patient row
+    patient = Patient(
+        age=body.age,
+        sex=body.sex,
+        chest_pain_type=body.chest_pain_type,
+        resting_bp=body.resting_bp,
+        cholesterol=body.cholesterol,
+        fasting_bs=body.fasting_bs,
+        resting_ecg=body.resting_ecg,
+        max_hr=body.max_hr,
+        exercise_angina=body.exercise_angina,
+        oldpeak=body.oldpeak,
+        st_slope=body.st_slope,
+    )
+    db.add(patient)
+    db.flush()  # get patient.id
+
+    # 2. Build feature dict for the classifier
+    #    (engineering.py derived features are computed here inline)
+    age_val = body.age
+    bp_val  = body.resting_bp
+
+    if bp_val < 120:
+        bp_risk = "Normal"
+    elif bp_val < 130:
+        bp_risk = "Elevated"
+    elif bp_val < 140:
+        bp_risk = "Stage1"
+    elif bp_val < 180:
+        bp_risk = "Stage2"
     else:
-        risk, low, med, high = "Low",    0.85, 0.11, 0.04
+        bp_risk = "Crisis"
 
-    patient_id    = _uuid()
-    prediction_id = _uuid()
+    if age_val < 40:
+        age_bin = "<40"
+    elif age_val < 50:
+        age_bin = "40-49"
+    elif age_val < 60:
+        age_bin = "50-59"
+    elif age_val < 70:
+        age_bin = "60-69"
+    else:
+        age_bin = "70+"
 
-    # Store in mock in-memory store so /recommend can look it up
-    _PREDICTIONS[prediction_id] = {
-        "patient_id":     patient_id,
-        "risk_category":  risk,
-        "confidence":     round(max(low, med, high), 2),
-        "age":            body.age,
-        "has_arrhythmia": False,      # not in predict request; clinician sets in /recommend
-        "probabilities":  {"Low": low, "Medium": med, "High": high},
-        "created_at":     _now(),
+    hr_stress = round(body.max_hr / (220 - body.age), 3) if (220 - body.age) != 0 else 0.0
+
+    features = {
+        "Age":                  body.age,
+        "Sex":                  body.sex,
+        "ChestPainType":        body.chest_pain_type,
+        "RestingBP":            body.resting_bp,
+        "Cholesterol":          body.cholesterol,
+        "FastingBS":            body.fasting_bs,
+        "RestingECG":           body.resting_ecg,
+        "MaxHR":                body.max_hr,
+        "ExerciseAngina":       body.exercise_angina,
+        "Oldpeak":              body.oldpeak,
+        "ST_Slope":             body.st_slope,
+        "AgeBin":               age_bin,
+        "BP_RiskLevel":         bp_risk,
+        "HeartRateStressIndex": hr_stress,
     }
 
+    # 3. Run classifier
+    result = classifier_predict(features, model_bundle=_MODEL_BUNDLE)
+
+    # 4. Insert prediction row
+    prediction = Prediction(
+        patient_id=patient.id,
+        risk_category=result["risk_category"],
+        confidence=result["confidence"],
+        probabilities=result["probabilities"],
+        model_version=result["model_version"],
+    )
+    db.add(prediction)
+    db.commit()
+    db.refresh(prediction)
+
+    latency = int((time.time() - t0) * 1000)
+    _log_request(db, "/api/v1/predict", 200,
+                 request.client.host if request.client else None, latency)
+
+    probs = result["probabilities"]
     return PredictResponse(
-        patient_id=patient_id,
-        prediction_id=prediction_id,
-        risk_category=risk,
-        confidence=round(max(low, med, high), 2),
-        probabilities=RiskProbabilities(Low=low, Medium=med, High=high),
-        model_version="part1_classifier_v1.0",
-        created_at=_now(),
+        patient_id=patient.id,
+        prediction_id=prediction.id,
+        risk_category=result["risk_category"],
+        confidence=result["confidence"],
+        probabilities=RiskProbabilities(
+            Low=probs.get("Low", 0.0),
+            Medium=probs.get("Medium", 0.0),
+            High=probs.get("High", 0.0),
+        ),
+        model_version=result["model_version"],
+        created_at=prediction.created_at,
     )
 
 
 # ---------------------------------------------------------------------------
-# §3  POST /api/v1/recommend  (30/min/IP per §7)
+# §3  POST /api/v1/recommend
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -501,33 +326,83 @@ def predict(request: Request, body: PatientVitalsRequest) -> PredictResponse:
     tags=["Recommendation"],
 )
 @limiter.limit("30/minute")
-def recommend(request: Request, body: RecommendRequest) -> RecommendResponse:
+def recommend(
+    request: Request,
+    body: RecommendRequest,
+    db: Session = Depends(get_db),
+) -> RecommendResponse:
     """
-    Accept a `prediction_id` + clinician `has_arrhythmia` flag and return a
-    Part-2 treatment recommendation with 2-year survival pair (§3).
-
-    Routing: High OR (Medium AND has_arrhythmia) → SBRT branch; else → Medication branch.
-
-    Real implementation (Task 4): looks up prediction → calls part2_recommend() → inserts recommendations row.
+    Look up the prediction, run Part-2 routing, persist the recommendation,
+    and return the treatment plan with 2-year survival pair.
     """
-    pred = _PREDICTIONS.get(body.prediction_id)
-    if pred is None:
+    t0 = time.time()
+
+    prediction = db.query(Prediction).filter(
+        Prediction.id == body.prediction_id
+    ).first()
+
+    if prediction is None:
         raise HTTPException(
             status_code=404,
             detail=f"Prediction '{body.prediction_id}' not found.",
         )
 
-    rec_id = _uuid()
-    patient_id    = pred["patient_id"]
-    risk_category = pred["risk_category"]
+    patient = db.query(Patient).filter(Patient.id == prediction.patient_id).first()
 
-    if _should_route_to_sbrt(risk_category, body.has_arrhythmia):
-        return _mock_sbrt_response(patient_id, body.prediction_id, rec_id)
-    return _mock_medication_response(patient_id, body.prediction_id, rec_id)
+    # Build input dict for routing.py
+    route_input = {
+        "patient_id":    prediction.patient_id,
+        "risk_category": prediction.risk_category,
+        "has_arrhythmia": body.has_arrhythmia,
+        "age":           patient.age if patient else 60,
+        "resting_bp":    float(patient.resting_bp) if patient else 120.0,
+        "oldpeak":       float(patient.oldpeak) if patient else 0.0,
+        "max_hr":        patient.max_hr if patient else 120,
+    }
+
+    rec_result = clinical_route(route_input)
+
+    rec = Recommendation(
+        prediction_id=prediction.id,
+        branch=rec_result["branch"],
+        intervention_type=rec_result["intervention_type"],
+        intensity=rec_result["intensity"],
+        bed_gy=rec_result.get("bed_gy"),
+        bed_valid=rec_result.get("bed_valid"),
+        grace_score=rec_result.get("grace_score"),
+        grace_risk_category=rec_result.get("grace_risk_category"),
+        survival_without=rec_result["survival_without"],
+        survival_with=rec_result["survival_with"],
+        model_version=rec_result.get("model_version", "part2_recommender_v1.0"),
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+
+    latency = int((time.time() - t0) * 1000)
+    _log_request(db, "/api/v1/recommend", 200,
+                 request.client.host if request.client else None, latency)
+
+    return RecommendResponse(
+        recommendation_id=rec.id,
+        patient_id=prediction.patient_id,
+        prediction_id=prediction.id,
+        branch=rec.branch,
+        intervention_type=rec.intervention_type,
+        intensity=rec.intensity,
+        bed_gy=float(rec.bed_gy) if rec.bed_gy is not None else None,
+        bed_valid=rec.bed_valid,
+        grace_score=rec.grace_score,
+        grace_risk_category=rec.grace_risk_category,
+        survival_without=float(rec.survival_without),
+        survival_with=float(rec.survival_with),
+        model_version=rec.model_version,
+        created_at=rec.created_at,
+    )
 
 
 # ---------------------------------------------------------------------------
-# §4  GET /api/v1/history  (120/min/IP per §7)
+# §4  GET /api/v1/history
 # ---------------------------------------------------------------------------
 
 @app.get(
@@ -540,21 +415,48 @@ def recommend(request: Request, body: RecommendRequest) -> RecommendResponse:
 @limiter.limit("120/minute")
 def history(
     request: Request,
-    page: int = Query(default=1,  ge=1,       description="1-indexed page number."),
+    page: int = Query(default=1,  ge=1,        description="1-indexed page number."),
     size: int = Query(default=20, ge=1, le=100, description="Records per page."),
+    db: Session = Depends(get_db),
 ) -> HistoryResponse:
-    """
-    Return paginated history of predictions + recommendations across all patients (§4).
-    `survival_improvement` is computed server-side as `survival_with − survival_without`.
-    """
-    total  = len(_HISTORY_ROWS)
+    """Return paginated history of predictions + recommendations from the database."""
+
+    total = db.query(Prediction).count()
     offset = (page - 1) * size
-    items  = _HISTORY_ROWS[offset: offset + size]
+
+    rows = (
+        db.query(Prediction, Recommendation, Patient)
+        .outerjoin(Recommendation, Recommendation.prediction_id == Prediction.id)
+        .outerjoin(Patient, Patient.id == Prediction.patient_id)
+        .order_by(Prediction.created_at.desc())
+        .offset(offset)
+        .limit(size)
+        .all()
+    )
+
+    items = []
+    for pred, rec, pat in rows:
+        survival_without = float(rec.survival_without) if rec else 0.0
+        survival_with    = float(rec.survival_with)    if rec else 0.0
+        items.append(HistoryItem(
+            prediction_id=pred.id,
+            patient_id=pred.patient_id,
+            created_at=pred.created_at,
+            age=pat.age if pat else 0,
+            risk_category=pred.risk_category,
+            confidence=float(pred.confidence),
+            branch=rec.branch if rec else "N/A",
+            intervention_type=rec.intervention_type if rec else "N/A",
+            survival_without=survival_without,
+            survival_with=survival_with,
+            survival_improvement=round(survival_with - survival_without, 3),
+        ))
+
     return HistoryResponse(page=page, size=size, total=total, items=items)
 
 
 # ---------------------------------------------------------------------------
-# §5  GET /api/v1/patients/{patient_id}  (120/min/IP per §7)
+# §5  GET /api/v1/patients/{patient_id}
 # ---------------------------------------------------------------------------
 
 @app.get(
@@ -568,17 +470,82 @@ def history(
     tags=["Patients"],
 )
 @limiter.limit("120/minute")
-def get_patient(request: Request, patient_id: str) -> PatientFullResponse:
-    """
-    Return the full record for a patient: vitals + all predictions + all recommendations (§5).
+def get_patient(
+    request: Request,
+    patient_id: str,
+    db: Session = Depends(get_db),
+) -> PatientFullResponse:
+    """Return the full record for a patient: vitals + all predictions + all recommendations."""
 
-    Mock: only the UUIDs for P1–P3 are hardcoded.
-    Real implementation (Task 4): DB join across patients / predictions / recommendations.
-    """
-    record = _PATIENTS.get(patient_id)
-    if record is None:
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if patient is None:
         raise HTTPException(
             status_code=404,
             detail=f"Patient '{patient_id}' not found.",
         )
-    return record
+
+    predictions = (
+        db.query(Prediction)
+        .filter(Prediction.patient_id == patient_id)
+        .order_by(Prediction.created_at.desc())
+        .all()
+    )
+
+    pred_records = [
+        PredictionRecord(
+            prediction_id=p.id,
+            risk_category=p.risk_category,
+            confidence=float(p.confidence),
+            probabilities=RiskProbabilities(
+                Low=p.probabilities.get("Low", 0.0),
+                Medium=p.probabilities.get("Medium", 0.0),
+                High=p.probabilities.get("High", 0.0),
+            ),
+            model_version=p.model_version,
+            created_at=p.created_at,
+        )
+        for p in predictions
+    ]
+
+    rec_records = []
+    for p in predictions:
+        recs = (
+            db.query(Recommendation)
+            .filter(Recommendation.prediction_id == p.id)
+            .all()
+        )
+        for r in recs:
+            rec_records.append(RecommendationRecord(
+                recommendation_id=r.id,
+                branch=r.branch,
+                intervention_type=r.intervention_type,
+                intensity=r.intensity,
+                bed_gy=float(r.bed_gy) if r.bed_gy is not None else None,
+                bed_valid=r.bed_valid,
+                grace_score=r.grace_score,
+                grace_risk_category=r.grace_risk_category,
+                survival_without=float(r.survival_without),
+                survival_with=float(r.survival_with),
+                model_version=r.model_version,
+                created_at=r.created_at,
+            ))
+
+    return PatientFullResponse(
+        patient_id=patient.id,
+        created_at=patient.created_at,
+        vitals=PatientVitals(
+            age=patient.age,
+            sex=patient.sex,
+            chest_pain_type=patient.chest_pain_type,
+            resting_bp=patient.resting_bp,
+            cholesterol=patient.cholesterol,
+            fasting_bs=patient.fasting_bs,
+            resting_ecg=patient.resting_ecg,
+            max_hr=patient.max_hr,
+            exercise_angina=patient.exercise_angina,
+            oldpeak=float(patient.oldpeak),
+            st_slope=patient.st_slope,
+        ),
+        predictions=pred_records,
+        recommendations=rec_records,
+    )
