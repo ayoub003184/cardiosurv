@@ -1,0 +1,53 @@
+# Local prod-shape test stack. Lets the team run the API against PostgreSQL
+# (not SQLite) before deploying to Render, to catch dialect-specific bugs.
+#
+#   docker compose up --build
+#   curl http://localhost:8000/api/v1/health
+#
+# Stop and wipe DB volume:
+#   docker compose down -v
+
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cardiosurv-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cardiosurv
+      POSTGRES_PASSWORD: cardiosurv
+      POSTGRES_DB: cardiosurv
+    ports:
+      - "5432:5432"
+    volumes:
+      - cardiosurv_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cardiosurv -d cardiosurv"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cardiosurv-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://cardiosurv:cardiosurv@db:5432/cardiosurv
+      ENVIRONMENT: production
+      MODEL_DIR: ./models
+      CORS_ORIGINS: "*"
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data:ro
+
+volumes:
+  cardiosurv_pgdata:
