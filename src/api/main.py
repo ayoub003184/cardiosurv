@@ -6,6 +6,7 @@ CardioSurv API — Production-ready (Task D Part A)
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 import logging
@@ -18,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
@@ -108,20 +110,38 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
+# Wire the rate limiter into the middleware stack so @limiter.limit() decorators
+# actually enforce limits (without this, the decorators are no-ops).
+app.add_middleware(SlowAPIMiddleware)
 
 # ---------------------------------------------------------------------------
-# CORS Middleware
+# CORS Middleware — driven by CORS_ORIGINS env var (comma-separated list).
+# Defaults cover local dev (Live Server + python -m http.server 5500).
+# In production, set CORS_ORIGINS to your deployed frontend URL(s).
 # ---------------------------------------------------------------------------
-RENDER_FRONTEND_URL = "https://cardiosurv-frontend.onrender.com"
+
+_default_cors = (
+    "http://localhost:5500,"
+    "http://127.0.0.1:5500,"
+    "http://localhost:3000,"
+    "http://127.0.0.1:3000"
+)
+_cors_env = os.getenv("CORS_ORIGINS", _default_cors).strip()
+
+# Allow "*" to fully open CORS (useful for the team integration test phase).
+if _cors_env == "*":
+    _cors_origins = ["*"]
+    _allow_credentials = False  # cannot combine "*" with credentials per spec
+else:
+    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    _allow_credentials = True
+
+logger.info(f"[cors] Allowed origins: {_cors_origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5500",
-        "http://127.0.0.1:5500",
-        RENDER_FRONTEND_URL,
-    ],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -189,15 +209,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 #  Global 500 Error Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Catch-all handler: log internally, return clean JSON to user."""
+    """Catch-all handler: log internally, return clean structured JSON to user."""
     logger.error(f"[500] Unhandled exception: {type(exc).__name__}: {exc}", exc_info=True)
-    
+
     return JSONResponse(
         status_code=500,
         content={
-            "error": "Internal server error",
-            "detail": "An unexpected error occurred. Please try again later."
-        }
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "Internal server error",
+                "details": [{"type": type(exc).__name__}],
+            }
+        },
     )
 
 # ---------------------------------------------------------------------------
