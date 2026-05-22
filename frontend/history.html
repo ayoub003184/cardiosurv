@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardioSurv — History</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 82C50 82 16 59 16 35C16 22 27 14 38 14C44 14 50 19 50 19C50 19 56 14 62 14C73 14 84 22 84 35C84 59 50 82 50 82Z' fill='%23e05c7a'/%3E%3Cpolyline points='18,50 30,50 37,36 44,64 51,42 57,57 64,50 82,50' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+<script src="js/api.js" defer></script>
+<style>
+  /* Table tweaks */
+  .risk-dot { width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle; }
+  .risk-dot.low    { background:var(--risk-low); }
+  .risk-dot.medium { background:var(--risk-med); }
+  .risk-dot.high   { background:var(--risk-high); }
+
+  tbody tr { cursor:pointer; }
+
+  /* Modal detail grid */
+  .detail-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+  @media(max-width:480px){ .detail-grid{grid-template-columns:1fr;} }
+  .detail-item { background:var(--surface2);border-radius:var(--r);padding:12px 14px; }
+  .detail-key { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted2);margin-bottom:4px; }
+  .detail-val { font-size:14px;font-weight:600;color:var(--text); }
+  .modal-section-title {
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;
+    color:var(--accent2);margin:1.25rem 0 10px;
+    padding-bottom:7px;border-bottom:1px solid var(--border2);
+  }
+
+  /* Loading spinner */
+  .modal-loading { display:flex;align-items:center;justify-content:center;padding:3rem;gap:10px;color:var(--muted2);font-size:13px; }
+  .spin { width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0; }
+  @keyframes spin { to{transform:rotate(360deg);} }
+
+  /* Stats bar above table */
+  .stats-row { display:flex;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap; }
+  .stat-pill {
+    display:flex;align-items:center;gap:7px;padding:7px 14px;
+    background:var(--surface);border:1px solid var(--border2);border-radius:99px;font-size:12px;font-weight:600;
+  }
+  .stat-pill .dot { width:8px;height:8px;border-radius:50%; }
+
+  /* Null pill */
+  .null-val { color:var(--muted);font-style:italic;font-weight:400;font-size:12px; }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div class="bg-glow"></div>
+
+<!-- Topbar -->
+<nav class="topbar">
+  <a class="topbar-logo" href="index.html">
+    <div class="topbar-logo-icon">
+      <svg width="32" height="32" viewBox="0 0 100 100" fill="none">
+        <path d="M50 82C50 82 16 59 16 35C16 22 27 14 38 14C44 14 50 19 50 19C50 19 56 14 62 14C73 14 84 22 84 35C84 59 50 82 50 82Z" fill="url(#hg)"/>
+        <polyline points="18,50 30,50 37,36 44,64 51,42 57,57 64,50 82,50" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs><linearGradient id="hg" x1="16" y1="14" x2="84" y2="82" gradientUnits="userSpaceOnUse"><stop stop-color="#e05c7a"/><stop offset="1" stop-color="#f08da0"/></linearGradient></defs>
+      </svg>
+    </div>
+    <span class="topbar-logo-name">CardioSurv</span>
+  </a>
+  <div class="topbar-nav">
+    <a href="index.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </a>
+    <a href="predict.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Assessment
+    </a>
+    <a href="history.html" class="active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+      History
+    </a>
+  </div>
+  <div class="topbar-actions">
+    <button class="theme-btn" onclick="toggleTheme()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="inner-page">
+  <div class="container-lg">
+
+    <div class="section-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h1 class="section-title">Prediction History</h1>
+        <p class="section-sub" id="history-sub">Loading records…</p>
+      </div>
+      <a href="predict.html" class="btn btn-primary" style="text-decoration:none;font-size:13px;padding:9px 16px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Assessment
+      </a>
+    </div>
+
+    <!-- Stats pills -->
+    <div class="stats-row" id="stats-row" style="display:none;"></div>
+
+    <!-- Loading state -->
+    <div id="table-loading" style="text-align:center;padding:3rem;color:var(--muted2);">
+      <div style="display:inline-flex;align-items:center;gap:10px;">
+        <div class="spin"></div>
+        <span style="font-size:13px;">Fetching history…</span>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty-state" class="empty-state" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+      <h3>No predictions yet</h3>
+      <p>Run a patient assessment to see results here.</p>
+      <a href="predict.html" class="btn btn-primary" style="margin-top:1.5rem;text-decoration:none;">Start Assessment</a>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-state" class="empty-state" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <h3>Failed to load history</h3>
+      <p id="error-msg">Could not connect to the API.</p>
+      <button class="btn btn-secondary" style="margin-top:1.5rem;" onclick="loadPage(currentPage)">Retry</button>
+    </div>
+
+    <!-- Table -->
+    <div id="table-wrap" style="display:none;">
+      <div class="card" style="overflow:hidden;">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Patient ID</th>
+                <th>Risk</th>
+                <th>Confidence</th>
+                <th>Branch</th>
+                <th>Intervention</th>
+                <th>Survival Improvement</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Pagination -->
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── PATIENT MODAL ── -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" role="dialog" aria-labelledby="modal-title-text" aria-modal="true">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title-text">Patient Record</div>
+        <div style="font-size:11px;color:var(--muted2);margin-top:2px;font-family:monospace;" id="modal-patient-id"></div>
+      </div>
+      <button class="modal-close" onclick="closeModalDirect()" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="modal-loading"><div class="spin"></div> Loading patient record…</div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// Theme
+(function(){const s=localStorage.getItem('cardiosurv-theme');if(s==='light')document.body.classList.add('light');})();
+function toggleTheme(){const l=document.body.classList.toggle('light');localStorage.setItem('cardiosurv-theme',l?'light':'dark');}
+
+// Particle canvas
+(function(){
+  const canvas=document.getElementById('bg-canvas');const ctx=canvas.getContext('2d');let W,H,particles=[];
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  for(let i=0;i<30;i++){particles.push({x:Math.random()*1000,y:Math.random()*1000,r:Math.random()*1.2+0.3,vx:(Math.random()-0.5)*0.10,vy:(Math.random()-0.5)*0.10,o:Math.random()*0.3+0.04});}
+  function draw(){ctx.clearRect(0,0,W,H);particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;ctx.beginPath();ctx.arc(p.x%W,p.y%H,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(224,92,122,${p.o})`;ctx.fill();});requestAnimationFrame(draw);}
+  draw();
+})();
+
+// ── STATE ────────────────────────────────────────────────────
+let currentPage = 1;
+let totalPages  = 1;
+
+// ── HELPERS ──────────────────────────────────────────────────
+function pct(v) { return v != null ? Math.round(v * 100) + '%' : '<span class="null-val">—</span>'; }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function shortId(id) { return id ? id.slice(0,8) + '…' : '—'; }
+function riskDot(cat) {
+  const cls = cat ? cat.toLowerCase() : '';
+  return `<span class="risk-dot ${cls}"></span>${cat || '—'}`;
+}
+function improvementBadge(v) {
+  if (v == null) return '<span class="null-val">—</span>';
+  const pv = Math.round(v * 100);
+  const color = pv > 0 ? 'var(--green)' : 'var(--muted2)';
+  return `<span style="color:${color};font-weight:700;">${pv > 0 ? '+' : ''}${pv}%</span>`;
+}
+function nullVal(v, suffix='') {
+  if (v == null || v === '') return '<span class="null-val">—</span>';
+  return v + suffix;
+}
+
+// ── LOAD PAGE ────────────────────────────────────────────────
+async function loadPage(page) {
+  currentPage = page;
+  document.getElementById('table-loading').style.display = 'block';
+  document.getElementById('table-wrap').style.display    = 'none';
+  document.getElementById('empty-state').style.display   = 'none';
+  document.getElementById('error-state').style.display   = 'none';
+  document.getElementById('stats-row').style.display     = 'none';
+
+  try {
+    const data = await getHistory(page);
+    document.getElementById('table-loading').style.display = 'none';
+
+    if (!data.items || data.items.length === 0) {
+      document.getElementById('empty-state').style.display = 'block';
+      document.getElementById('history-sub').textContent   = 'No records found.';
+      return;
+    }
+
+    // Sub-heading
+    document.getElementById('history-sub').textContent =
+      `${data.total} record${data.total !== 1 ? 's' : ''} · Page ${data.page} of ${Math.ceil(data.total / data.size)}`;
+    totalPages = Math.ceil(data.total / data.size);
+
+    // Stats pills
+    buildStats(data.items);
+
+    // Render rows
+    const tbody = document.getElementById('history-tbody');
+    tbody.innerHTML = '';
+    data.items.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="white-space:nowrap;font-size:12px;">${fmtDate(item.created_at)}</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--muted2);" title="${item.patient_id}">${shortId(item.patient_id)}</td>
+        <td>${riskDot(item.risk_category)}</td>
+        <td>${item.confidence != null ? Math.round(item.confidence * 100) + '%' : '<span class="null-val">—</span>'}</td>
+        <td>${nullVal(item.branch)}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item.intervention_type||''}">${nullVal(item.intervention_type)}</td>
+        <td>${improvementBadge(item.survival_improvement)}</td>
+      `;
+      tr.addEventListener('click', () => openPatientModal(item.patient_id));
+      tbody.appendChild(tr);
+    });
+
+    // Pagination
+    renderPagination(data.page, totalPages);
+
+    document.getElementById('table-wrap').style.display  = 'block';
+    document.getElementById('stats-row').style.display   = 'flex';
+
+  } catch(err) {
+    document.getElementById('table-loading').style.display = 'none';
+    document.getElementById('error-state').style.display   = 'block';
+    document.getElementById('error-msg').textContent = `Error ${err.status || ''}: ${err.message}`;
+    document.getElementById('history-sub').textContent = 'Failed to load.';
+  }
+}
+
+function buildStats(items) {
+  const counts = { Low:0, Medium:0, High:0 };
+  items.forEach(i => { if (i.risk_category && counts[i.risk_category] !== undefined) counts[i.risk_category]++; });
+  const colors = { Low:'var(--risk-low)', Medium:'var(--risk-med)', High:'var(--risk-high)' };
+  const row = document.getElementById('stats-row');
+  row.innerHTML = Object.entries(counts).filter(([,v])=>v>0).map(([k,v]) =>
+    `<div class="stat-pill"><span class="dot" style="background:${colors[k]};"></span><span>${k}: ${v}</span></div>`
+  ).join('');
+}
+
+function renderPagination(current, total) {
+  const pg = document.getElementById('pagination');
+  if (total <= 1) { pg.innerHTML = ''; return; }
+  let html = '';
+  // Prev
+  html += `<button class="page-btn" onclick="loadPage(${current-1})" ${current===1?'disabled':''}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>`;
+  // Pages
+  const range = [];
+  for (let i=1;i<=total;i++) {
+    if (i===1||i===total||Math.abs(i-current)<=1) range.push(i);
+    else if (range[range.length-1]!=='...') range.push('...');
+  }
+  range.forEach(p => {
+    if (p==='...') html += `<span class="page-info">…</span>`;
+    else html += `<button class="page-btn${p===current?' active':''}" onclick="loadPage(${p})">${p}</button>`;
+  });
+  // Next
+  html += `<button class="page-btn" onclick="loadPage(${current+1})" ${current===total?'disabled':''}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>`;
+  pg.innerHTML = html;
+}
+
+// ── MODAL ────────────────────────────────────────────────────
+async function openPatientModal(patientId) {
+  const overlay = document.getElementById('modal-overlay');
+  const body    = document.getElementById('modal-body');
+  document.getElementById('modal-patient-id').textContent = patientId;
+  body.innerHTML = '<div class="modal-loading"><div class="spin"></div> Loading patient record…</div>';
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const data = await getPatient(patientId);
+    renderPatientModal(data);
+  } catch(err) {
+    body.innerHTML = `
+      <div class="empty-state" style="padding:2rem;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:40px;height:40px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <h3 style="font-size:15px;">Failed to load record</h3>
+        <p style="font-size:12px;">${err.message}</p>
+      </div>`;
+  }
+}
+
+function renderPatientModal(d) {
+  const body = document.getElementById('modal-body');
+  let html = '';
+
+  // Vitals
+  if (d.vitals) {
+    const v = d.vitals;
+    html += `<div class="modal-section-title">Vitals</div>
+    <div class="detail-grid">
+      ${[['Age',v.age],['Sex',v.sex],['Chest Pain',v.chest_pain_type],['Resting BP',v.resting_bp+' mmHg'],
+         ['Cholesterol',v.cholesterol+' mg/dL'],['Fasting BS',v.fasting_bs],['Resting ECG',v.resting_ecg],
+         ['Max HR',v.max_hr],['Exercise Angina',v.exercise_angina],['Oldpeak',v.oldpeak],['ST Slope',v.st_slope]
+        ].map(([k,val])=>`<div class="detail-item"><div class="detail-key">${k}</div><div class="detail-val">${nullVal(val)}</div></div>`).join('')}
+    </div>`;
+  }
+
+  // Predictions
+  if (d.predictions && d.predictions.length) {
+    html += `<div class="modal-section-title">Predictions (${d.predictions.length})</div>`;
+    d.predictions.forEach(p => {
+      const cat = p.risk_category || '';
+      const clr = {Low:'var(--risk-low)',Medium:'var(--risk-med)',High:'var(--risk-high)'}[cat]||'var(--text)';
+      html += `<div class="detail-item" style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+          <span style="font-size:13px;font-weight:700;color:${clr};">${cat} Risk</span>
+          <span style="font-size:11px;color:var(--muted2);">${Math.round((p.confidence||0)*100)}% confidence</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted2);margin-top:4px;">${fmtDate(p.created_at)} · ${p.model_version||''}</div>
+      </div>`;
+    });
+  }
+
+  // Recommendations
+  if (d.recommendations && d.recommendations.length) {
+    html += `<div class="modal-section-title">Recommendations (${d.recommendations.length})</div>`;
+    d.recommendations.forEach(r => {
+      html += `<div class="detail-item" style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+          <span style="font-size:13px;font-weight:700;">${r.branch||'—'}</span>
+          <span style="font-size:11px;background:var(--accent-dim);color:var(--accent2);padding:2px 8px;border-radius:99px;">${r.intensity||r.intensity_level||'—'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:4px;word-break:break-word;">${r.intervention_type||'—'}</div>
+        <div style="display:flex;gap:12px;font-size:12px;font-weight:600;">
+          <span style="color:var(--risk-high);">Without: ${pct(r.survival_without)}</span>
+          <span style="color:var(--risk-low);">With: ${pct(r.survival_with)}</span>
+        </div>
+        ${r.grace_score!=null?`<div style="font-size:11px;color:var(--muted2);margin-top:4px;">GRACE: ${r.grace_score} · ${r.grace_risk_category||''}</div>`:''}
+        ${r.bed_gy!=null?`<div style="font-size:11px;color:var(--muted2);margin-top:2px;">BED: ${r.bed_gy} Gy</div>`:''}
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">${fmtDate(r.created_at)}</div>
+      </div>`;
+    });
+  }
+
+  if (!html) html = '<p style="color:var(--muted2);font-size:13px;">No detailed data available.</p>';
+  body.innerHTML = html;
+}
+
+function closeModal(event) {
+  if (event.target === document.getElementById('modal-overlay')) closeModalDirect();
+}
+function closeModalDirect() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+// ESC key
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModalDirect(); });
+
+// ── INIT ─────────────────────────────────────────────────────
+loadPage(1);
+</script>
+</body>
+</html>
