@@ -33,7 +33,10 @@ from src.db.models import AuditLog, Base, Patient, Prediction, Recommendation
 from src.db.session import engine, get_db
 from src.models.part1_classifier import load as load_model
 from src.models.part1_classifier import predict as classifier_predict
+from src.models.part2_recommender import load as load_part2
+from src.models.part2_recommender import recommend as part2_recommend
 from src.clinical.routing import route_patient as clinical_route
+from src.clinical.routing import compute_grace as clinical_compute_grace
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -63,11 +66,17 @@ async def lifespan(app: FastAPI):
         MODEL_BUNDLE["loaded"] = False
         logger.error(f"[lifespan] ✗ Model file not found: {e}")
     
-    # TODO: Load Part-2 here when Bougacha's T-A is merged
-    # try:
-    #     MODEL_BUNDLE["part2"] = load_part2("models/part2_recommender_v1.0.pkl")
-    # except FileNotFoundError:
-    #     logger.warning("[lifespan] Part-2 model not yet available")
+    # Load Part-2 recommender (Bougacha T-A) — wired by T-E
+    try:
+        MODEL_BUNDLE["part2"] = load_part2("models/part2_recommender_v1.0.pkl")
+        MODEL_BUNDLE["part2_loaded"] = True
+        logger.info("[lifespan] ✓ Part-2 recommender loaded")
+    except FileNotFoundError as e:
+        MODEL_BUNDLE["part2_loaded"] = False
+        logger.error(f"[lifespan] ✗ Part-2 model file not found: {e}")
+    except Exception as e:
+        MODEL_BUNDLE["part2_loaded"] = False
+        logger.error(f"[lifespan] ✗ Part-2 model failed to load: {e}")
     
     yield  # Application runs here
     
@@ -227,14 +236,16 @@ def _log_request(db: Session, route: str, status_code: int,
 )
 def health() -> HealthResponse:
     """Liveness / readiness probe. No auth, no rate limit."""
-    model_tag = "v1.0" if MODEL_BUNDLE.get("loaded") else "NOT_LOADED"
+    part1_tag = "v1.0" if MODEL_BUNDLE.get("loaded") else "NOT_LOADED"
+    part2_tag = "v1.0" if MODEL_BUNDLE.get("part2_loaded") else "NOT_LOADED"
+    survival_tag = "v1.0" if MODEL_BUNDLE.get("part2_loaded") else "NOT_LOADED"
     return HealthResponse(
         status="ok",
         version="v1",
         model_versions=ModelVersions(
-            part1_classifier=model_tag,
-            part2_recommender="v1.0",  # Update when Part-2 is wired
-            survival_cox="v1.0",
+            part1_classifier=part1_tag,
+            part2_recommender=part2_tag,
+            survival_cox=survival_tag,
         ),
         uptime_seconds=round(time.time() - _START_TIME, 2),
     )
@@ -387,11 +398,20 @@ def recommend(
     db: Session = Depends(get_db),
 ) -> RecommendResponse:
     """
-    Look up the prediction, run Part-2 routing, persist the recommendation,
-    and return the treatment plan with 2-year survival pair.
+    Run the real Part-2 ML pipeline (XGBoost intervention + Cox survival),
+    persist the recommendation, and return the treatment plan.
+
+    Flow (T-E):
+      1. Look up prediction + patient rows in DB
+      2. Build features_dict from the patient's stored vitals
+      3. Call part2_recommend() → ML intervention + survival
+      4. Call clinical_route() → bed_valid + grace_risk_category (DB fields)
+      5. Map intensity_level (Standard/Intensified/Maximal/N/A) → Low/Moderate/High
+      6. Insert recommendations row and return RecommendResponse
     """
     t0 = time.time()
 
+    # ── Step 1: Look up prediction ──────────────────────────────────────────
     prediction = db.query(Prediction).filter(
         Prediction.id == body.prediction_id
     ).first()
@@ -404,65 +424,103 @@ def recommend(
 
     patient = db.query(Patient).filter(Patient.id == prediction.patient_id).first()
 
-    # Build input dict for routing.py
-    patient_dict = {
+    if patient is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Patient '{prediction.patient_id}' not found.",
+        )
+
+    # ── Step 2: Verify Part-2 model is loaded ───────────────────────────────
+    if not MODEL_BUNDLE.get("part2_loaded") or MODEL_BUNDLE.get("part2") is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Part-2 recommender model is not loaded. Check server logs.",
+        )
+
+    # ── Step 3: Build features_dict from stored patient vitals ──────────────
+    features_dict = {
         "patient_id":      prediction.patient_id,
-        "has_arrhythmia":  body.has_arrhythmia,
-        "age":             patient.age if patient else 60,
-        "heart_rate":      patient.max_hr if patient else 80,
-        "systolic_bp":     float(patient.resting_bp) if patient else 120.0,
+        "age":             patient.age,
+        "sex":             patient.sex,
+        "chest_pain_type": patient.chest_pain_type,
+        "resting_bp":      patient.resting_bp,
+        "cholesterol":     patient.cholesterol,
+        "fasting_bs":      patient.fasting_bs,
+        "resting_ecg":     patient.resting_ecg,
+        "max_hr":          patient.max_hr,
+        "exercise_angina": patient.exercise_angina,
+        "oldpeak":         float(patient.oldpeak),
+        "st_slope":        patient.st_slope,
+        "has_arrhythmia":  bool(body.has_arrhythmia),
     }
 
-    rec_result = clinical_route(
-        patient_dict,
+    # ── Step 4: Call the real Part-2 ML pipeline ────────────────────────────
+    try:
+        result = part2_recommend(features_dict, bundle=MODEL_BUNDLE["part2"])
+    except Exception as e:
+        logger.exception("[recommend] part2_recommend failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Part-2 recommendation failed: {e}",
+        )
+
+    # ── Step 5: Also run clinical_route to populate bed_valid + grace_cat ──
+    # (These two DB columns are not returned by part2_recommend.)
+    route_input = {
+        "has_arrhythmia": bool(body.has_arrhythmia),
+        "age":            patient.age,
+        "heart_rate":     patient.max_hr,
+        "systolic_bp":    float(patient.resting_bp),
+    }
+    route_result = clinical_route(
+        route_input,
         predicted_risk=prediction.risk_category,
         confidence_score=float(prediction.confidence),
     )
 
-    # Map RouteResult dataclass to recommendation fields
-    is_sbrt = rec_result.path.lower().startswith("sbrt") or "sbrt" in rec_result.path.lower()
-    branch = "SBRT" if is_sbrt else "Medication"
+    # ── Step 6: Derive DB-shaped fields from the ML result ──────────────────
+    # Branch: SBRT if intervention_type is the radioablation slug, else Medication.
+    branch = "SBRT" if result["intervention_type"] == "cardiac_sbrt_25Gy_1fx" else "Medication"
 
-    if is_sbrt:
-        intervention_type = "cardiac_sbrt_25Gy_1fx"
-        intensity = "High"
-        bed_gy_val = float(rec_result.bed_result.bed_gy) if rec_result.bed_result else None
-        bed_valid_val = rec_result.bed_valid
-        grace_score_val = None
+    # Map Part-2 intensity_level → DB intensity (String(8) column).
+    #   "Standard"    → "Low"
+    #   "Intensified" → "Moderate"
+    #   "Maximal"     → "High"
+    #   "N/A" (SBRT)  → "High"
+    INTENSITY_MAP = {
+        "Standard":    "Low",
+        "Intensified": "Moderate",
+        "Maximal":     "High",
+        "N/A":         "High",
+    }
+    intensity_db = INTENSITY_MAP.get(result["intensity_level"], "Moderate")
+
+    bed_gy_val      = result.get("bed_gy")  # None for Medication
+    grace_score_val = result.get("grace_score")  # None for SBRT
+
+    if branch == "SBRT":
+        bed_valid_val = route_result.bed_valid
         grace_cat_val = None
-        survival_without = 0.58
-        survival_with = 0.81
     else:
-        intensity = rec_result.medication_intensity or "Moderate"
-        if intensity == "High":
-            intervention_type = "high_intensity_statin+beta_blocker+aspirin"
-        elif intensity == "Low":
-            intervention_type = "low_dose_statin+lifestyle"
-        else:
-            intervention_type = "beta_blocker+moderate_statin+aspirin"
-        bed_gy_val = None
         bed_valid_val = None
-        grace_score_val = rec_result.grace_result.total_score if rec_result.grace_result else None
-        grace_cat_val = rec_result.grace_result.risk_category if rec_result.grace_result else None
-        if intensity == "High":
-            survival_without, survival_with = 0.65, 0.85
-        elif intensity == "Low":
-            survival_without, survival_with = 0.91, 0.96
-        else:
-            survival_without, survival_with = 0.81, 0.92
+        grace_cat_val = (
+            route_result.grace_result.risk_category
+            if route_result.grace_result else None
+        )
 
+    # ── Step 7: Persist the recommendation row ──────────────────────────────
     rec = Recommendation(
         prediction_id=prediction.id,
         branch=branch,
-        intervention_type=intervention_type,
-        intensity=intensity,
+        intervention_type=result["intervention_type"],
+        intensity=intensity_db,
         bed_gy=bed_gy_val,
         bed_valid=bed_valid_val,
         grace_score=grace_score_val,
         grace_risk_category=grace_cat_val,
-        survival_without=survival_without,
-        survival_with=survival_with,
-        model_version="part2_recommender_v1.0",
+        survival_without=float(result["survival_without"]),
+        survival_with=float(result["survival_with"]),
+        model_version=result.get("model_version", "part2_recommender_v1.0"),
     )
     db.add(rec)
     db.commit()
