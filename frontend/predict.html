@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardioSurv — Patient Assessment</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 82C50 82 16 59 16 35C16 22 27 14 38 14C44 14 50 19 50 19C50 19 56 14 62 14C73 14 84 22 84 35C84 59 50 82 50 82Z' fill='%23e05c7a'/%3E%3Cpolyline points='18,50 30,50 37,36 44,64 51,42 57,57 64,50 82,50' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  .form-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--accent2);
+    margin: 1.75rem 0 1rem; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .form-section-title svg { width: 14px; height: 14px; }
+  .form-card {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: var(--r-lg); padding: 1.75rem;
+    position: relative; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--border), 0 24px 48px rgba(0,0,0,0.3);
+  }
+  .form-card::before {
+    content:''; position:absolute; top:0;left:0;right:0; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(224,92,122,0.4),transparent);
+  }
+  .step-indicator {
+    display: flex; align-items: center; gap: 0; margin-bottom: 1.75rem;
+  }
+  .step { display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500; }
+  .step-num {
+    width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border2);
+    background:var(--surface2);color:var(--muted2);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  }
+  .step.active .step-num { border-color:var(--accent);background:var(--accent-dim);color:var(--accent2); }
+  .step.active .step-label { color:var(--text); }
+  .step-label { color:var(--muted2); }
+  .step-line { flex:1;height:1px;background:var(--border2);margin:0 8px; }
+  .arrhythmia-row {
+    background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);
+    padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all 0.2s;
+    margin-bottom:14px;
+  }
+  .arrhythmia-row:hover { border-color:var(--accent);background:var(--accent-dim); }
+  .arrhythmia-row input[type=checkbox] { width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer; }
+  .arrhythmia-row .ar-text { flex:1; }
+  .arrhythmia-row .ar-title { font-size:13px;font-weight:600;color:var(--text); }
+  .arrhythmia-row .ar-sub { font-size:11px;color:var(--muted2);margin-top:2px; }
+  .submit-area { margin-top:1.5rem;border-top:1px solid var(--border2);padding-top:1.5rem; }
+  #form-error { display:none;margin-bottom:1rem; }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div class="bg-glow"></div>
+
+<!-- Topbar -->
+<nav class="topbar">
+  <a class="topbar-logo" href="index.html">
+    <div class="topbar-logo-icon">
+      <svg width="32" height="32" viewBox="0 0 100 100" fill="none">
+        <path d="M50 82C50 82 16 59 16 35C16 22 27 14 38 14C44 14 50 19 50 19C50 19 56 14 62 14C73 14 84 22 84 35C84 59 50 82 50 82Z" fill="url(#hg)"/>
+        <polyline points="18,50 30,50 37,36 44,64 51,42 57,57 64,50 82,50" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs><linearGradient id="hg" x1="16" y1="14" x2="84" y2="82" gradientUnits="userSpaceOnUse"><stop stop-color="#e05c7a"/><stop offset="1" stop-color="#f08da0"/></linearGradient></defs>
+      </svg>
+    </div>
+    <span class="topbar-logo-name">CardioSurv</span>
+  </a>
+  <div class="topbar-nav">
+    <a href="index.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </a>
+    <a href="predict.html" class="active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Assessment
+    </a>
+    <a href="history.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
+      History
+    </a>
+  </div>
+  <div class="topbar-actions">
+    <button class="theme-btn" onclick="toggleTheme()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="inner-page">
+  <div class="container" style="max-width:680px;">
+
+    <div class="section-header">
+      <h1 class="section-title">Patient Assessment</h1>
+      <p class="section-sub">Enter clinical data to classify cardiovascular risk and generate a treatment recommendation.</p>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="step-indicator">
+      <div class="step active" id="step1">
+        <div class="step-num">1</div>
+        <span class="step-label">Patient Data</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step2">
+        <div class="step-num">2</div>
+        <span class="step-label">Risk Result</span>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step3">
+        <div class="step-num">3</div>
+        <span class="step-label">Recommendation</span>
+      </div>
+    </div>
+
+    <div class="form-card">
+
+      <!-- Section: Demographics -->
+      <div class="form-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Demographics
+      </div>
+
+      <div class="grid-2">
+        <div class="field" id="field-age">
+          <label for="age">Age</label>
+          <input type="number" id="age" name="age" min="1" max="120" step="1" placeholder="e.g. 56">
+          <div class="field-error" id="err-age"></div>
+        </div>
+        <div class="field" id="field-sex">
+          <label for="sex">Sex</label>
+          <select id="sex" name="sex">
+            <option value="">Select…</option>
+            <option value="M">M — Male</option>
+            <option value="F">F — Female</option>
+          </select>
+          <div class="field-error" id="err-sex"></div>
+        </div>
+      </div>
+
+      <!-- Section: Symptoms -->
+      <div class="form-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Symptoms
+      </div>
+
+      <div class="grid-2">
+        <div class="field" id="field-chest_pain_type">
+          <label for="chest_pain_type">Chest Pain Type</label>
+          <select id="chest_pain_type" name="chest_pain_type">
+            <option value="">Select…</option>
+            <option value="TA">TA — Typical Angina</option>
+            <option value="ATA">ATA — Atypical Angina</option>
+            <option value="NAP">NAP — Non-Anginal Pain</option>
+            <option value="ASY">ASY — Asymptomatic</option>
+          </select>
+          <div class="field-error" id="err-chest_pain_type"></div>
+        </div>
+        <div class="field" id="field-exercise_angina">
+          <label for="exercise_angina">Exercise Angina</label>
+          <select id="exercise_angina" name="exercise_angina">
+            <option value="">Select…</option>
+            <option value="N">N — No</option>
+            <option value="Y">Y — Yes</option>
+          </select>
+          <div class="field-error" id="err-exercise_angina"></div>
+        </div>
+      </div>
+
+      <!-- Section: Vitals -->
+      <div class="form-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        Vitals
+      </div>
+
+      <div class="grid-3">
+        <div class="field" id="field-resting_bp">
+          <label for="resting_bp">Resting BP <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(mmHg)</span></label>
+          <input type="number" id="resting_bp" name="resting_bp" min="50" max="250" step="1" placeholder="50–250">
+          <div class="field-error" id="err-resting_bp"></div>
+        </div>
+        <div class="field" id="field-cholesterol">
+          <label for="cholesterol">Cholesterol <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(mg/dL)</span></label>
+          <input type="number" id="cholesterol" name="cholesterol" min="50" max="800" step="1" placeholder="50–800">
+          <div class="field-error" id="err-cholesterol"></div>
+        </div>
+        <div class="field" id="field-max_hr">
+          <label for="max_hr">Max Heart Rate</label>
+          <input type="number" id="max_hr" name="max_hr" min="40" max="230" step="1" placeholder="40–230">
+          <div class="field-error" id="err-max_hr"></div>
+        </div>
+      </div>
+
+      <!-- Fasting BS -->
+      <div class="field" id="field-fasting_bs">
+        <label>Fasting Blood Sugar &gt; 120 mg/dL</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="fbs0" name="fasting_bs" value="0">
+            <label for="fbs0">0 — No / Normal</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="fbs1" name="fasting_bs" value="1">
+            <label for="fbs1">1 — Yes / Elevated</label>
+          </div>
+        </div>
+        <div class="field-error" id="err-fasting_bs"></div>
+      </div>
+
+      <!-- Section: ECG & ST -->
+      <div class="form-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="7 13 10 10 13 13 17 8"/></svg>
+        ECG &amp; ST Analysis
+      </div>
+
+      <div class="grid-3">
+        <div class="field" id="field-resting_ecg">
+          <label for="resting_ecg">Resting ECG</label>
+          <select id="resting_ecg" name="resting_ecg">
+            <option value="">Select…</option>
+            <option value="Normal">Normal</option>
+            <option value="ST">ST — ST-T abnormality</option>
+            <option value="LVH">LVH — Left ventricular hypertrophy</option>
+          </select>
+          <div class="field-error" id="err-resting_ecg"></div>
+        </div>
+        <div class="field" id="field-oldpeak">
+          <label for="oldpeak">Oldpeak (ST depression)</label>
+          <input type="number" id="oldpeak" name="oldpeak" min="-3" max="7" step="0.1" placeholder="-3.0 to 7.0">
+          <div class="field-error" id="err-oldpeak"></div>
+        </div>
+        <div class="field" id="field-st_slope">
+          <label for="st_slope">ST Slope</label>
+          <select id="st_slope" name="st_slope">
+            <option value="">Select…</option>
+            <option value="Up">Up</option>
+            <option value="Flat">Flat</option>
+            <option value="Down">Down</option>
+          </select>
+          <div class="field-error" id="err-st_slope"></div>
+        </div>
+      </div>
+
+      <!-- Section: Recommendation -->
+      <div class="form-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Treatment Input
+      </div>
+
+      <label class="arrhythmia-row" for="has_arrhythmia">
+        <input type="checkbox" id="has_arrhythmia" name="has_arrhythmia">
+        <div class="ar-text">
+          <div class="ar-title">Patient has arrhythmia</div>
+          <div class="ar-sub">Clinician-entered flag. Combined with High risk, triggers SBRT branch.</div>
+        </div>
+      </label>
+
+      <!-- Submit area -->
+      <div class="submit-area">
+        <div id="form-error" class="msg err"></div>
+        <button class="btn btn-primary btn-full" id="submit-btn" onclick="handleSubmit()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Run Assessment
+        </button>
+        <p style="font-size:11px;color:var(--muted2);text-align:center;margin-top:10px;">This tool is for research purposes only. Not a clinical diagnostic instrument.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+// Theme
+(function(){const s=localStorage.getItem('cardiosurv-theme');if(s==='light')document.body.classList.add('light');})();
+function toggleTheme(){const l=document.body.classList.toggle('light');localStorage.setItem('cardiosurv-theme',l?'light':'dark');}
+
+// Particle canvas
+(function(){
+  const canvas=document.getElementById('bg-canvas');const ctx=canvas.getContext('2d');let W,H,particles=[];
+  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  for(let i=0;i<40;i++){particles.push({x:Math.random()*1000,y:Math.random()*1000,r:Math.random()*1.2+0.3,vx:(Math.random()-0.5)*0.12,vy:(Math.random()-0.5)*0.12,o:Math.random()*0.4+0.05});}
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;ctx.beginPath();ctx.arc(p.x%W,p.y%H,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(224,92,122,${p.o})`;ctx.fill();});
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ── FORM HELPERS ────────────────────────────────────────────
+function setFieldError(name, msg) {
+  const wrap = document.getElementById('field-' + name);
+  const errEl = document.getElementById('err-' + name);
+  if (!wrap || !errEl) return;
+  if (msg) { wrap.classList.add('has-error'); errEl.textContent = msg; errEl.style.display = 'block'; }
+  else      { wrap.classList.remove('has-error'); errEl.textContent = ''; errEl.style.display = 'none'; }
+}
+
+function clearAllErrors() {
+  ['age','sex','chest_pain_type','resting_bp','cholesterol','fasting_bs',
+   'resting_ecg','max_hr','exercise_angina','oldpeak','st_slope'].forEach(k => setFieldError(k, null));
+  const fe = document.getElementById('form-error');
+  fe.style.display = 'none'; fe.textContent = '';
+}
+
+function getFormData() {
+  const fbsEl = document.querySelector('input[name="fasting_bs"]:checked');
+  return {
+    age:             document.getElementById('age').value.trim(),
+    sex:             document.getElementById('sex').value,
+    chest_pain_type: document.getElementById('chest_pain_type').value,
+    resting_bp:      document.getElementById('resting_bp').value.trim(),
+    cholesterol:     document.getElementById('cholesterol').value.trim(),
+    fasting_bs:      fbsEl ? fbsEl.value : '',
+    resting_ecg:     document.getElementById('resting_ecg').value,
+    max_hr:          document.getElementById('max_hr').value.trim(),
+    exercise_angina: document.getElementById('exercise_angina').value,
+    oldpeak:         document.getElementById('oldpeak').value.trim(),
+    st_slope:        document.getElementById('st_slope').value,
+  };
+}
+
+function coerceFormData(raw) {
+  return {
+    age:             parseInt(raw.age),
+    sex:             raw.sex,
+    chest_pain_type: raw.chest_pain_type,
+    resting_bp:      parseInt(raw.resting_bp),
+    cholesterol:     parseInt(raw.cholesterol),
+    fasting_bs:      parseInt(raw.fasting_bs),
+    resting_ecg:     raw.resting_ecg,
+    max_hr:          parseInt(raw.max_hr),
+    exercise_angina: raw.exercise_angina,
+    oldpeak:         parseFloat(raw.oldpeak),
+    st_slope:        raw.st_slope,
+  };
+}
+
+// ── SUBMIT ──────────────────────────────────────────────────
+async function handleSubmit() {
+  clearAllErrors();
+  const raw = getFormData();
+
+  // Validate
+  const { valid, errors } = validatePredictForm(raw);
+  if (!valid) {
+    Object.entries(errors).forEach(([k, v]) => setFieldError(k, v));
+    const fe = document.getElementById('form-error');
+    fe.textContent = 'Please fix the highlighted fields before submitting.';
+    fe.style.display = 'block';
+    // Scroll to first error
+    const firstErr = document.querySelector('.has-error');
+    if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  const body = coerceFormData(raw);
+  const hasArrhythmia = document.getElementById('has_arrhythmia').checked;
+
+  // Disable button + loading state
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.innerHTML = '';
+
+  try {
+    // Step 1: predict
+    const predictResult = await submitPredict(body);
+
+    // Step 2: recommend
+    const recommendResult = await submitRecommend({
+      prediction_id:  predictResult.prediction_id,
+      has_arrhythmia: hasArrhythmia,
+    });
+
+    // Save to sessionStorage and navigate
+    sessionStorage.setItem('cardiosurv-predict',   JSON.stringify(predictResult));
+    sessionStorage.setItem('cardiosurv-recommend', JSON.stringify(recommendResult));
+    window.location.href = 'results.html';
+
+  } catch (err) {
+    const fe = document.getElementById('form-error');
+    if (err.status === 422 && err.details && err.details.length) {
+      err.details.forEach(d => { if (d.field) setFieldError(d.field, d.reason || 'Invalid value'); });
+      fe.textContent = 'Validation error — see highlighted fields.';
+    } else {
+      fe.textContent = `Error (${err.status || 'network'}): ${err.message}`;
+    }
+    fe.style.display = 'block';
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> Run Assessment';
+  }
+}
+
+// Allow Enter key on last field
+document.getElementById('st_slope').addEventListener('change', () => {});
+</script>
+</body>
+</html>
