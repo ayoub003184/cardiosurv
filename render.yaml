@@ -1,0 +1,53 @@
+# Render Blueprint — CardioSurv API
+# Apply this file via Render Dashboard → "New +" → "Blueprint" → connect repo.
+#
+# Provisions:
+#   1) cardiosurv-api          — FastAPI web service
+#   2) cardiosurv-db           — PostgreSQL free tier (90-day expiry, then recreate)
+#
+# After first apply, the DB tables still need to be created — see
+# docs/deployment.md §"Initial DB setup".
+
+services:
+  - type: web
+    name: cardiosurv-api
+    runtime: python
+    plan: free
+    region: singapore        # closest free region for Malaysia/Asia team
+    branch: main
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: MODEL_DIR
+        value: ./models
+      - key: PART1_MODEL_PATH
+        value: models/part1_classifier_v1.0.pkl
+      - key: PART2_MODEL_PATH
+        value: models/part2_recommender_v1.0.pkl
+      - key: SURVIVAL_MODEL_PATH
+        value: models/survival_cox_v1.0.pkl
+      - key: FEATURES_CSV
+        value: data/processed/features.csv
+      # CORS — overwrite via dashboard once Law Zi Ying's frontend URL is known.
+      # Use "*" temporarily for the team integration test phase, then lock down.
+      - key: CORS_ORIGINS
+        value: "*"
+      # Database URL auto-injected from the PostgreSQL service below.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cardiosurv-db
+          property: connectionString
+
+databases:
+  - name: cardiosurv-db
+    plan: free
+    region: singapore
+    databaseName: cardiosurv
+    user: cardiosurv
