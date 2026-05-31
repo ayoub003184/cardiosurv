@@ -27,20 +27,17 @@
     padding-bottom:7px;border-bottom:1px solid var(--border2);
   }
 
-  /* Loading spinner */
   .modal-loading { display:flex;align-items:center;justify-content:center;padding:3rem;gap:10px;color:var(--muted2);font-size:13px; }
-  .spin { width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0; }
-  @keyframes spin { to{transform:rotate(360deg);} }
 
   /* Stats bar above table */
   .stats-row { display:flex;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap; }
   .stat-pill {
     display:flex;align-items:center;gap:7px;padding:7px 14px;
     background:var(--surface);border:1px solid var(--border2);border-radius:99px;font-size:12px;font-weight:600;
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
   }
   .stat-pill .dot { width:8px;height:8px;border-radius:50%; }
 
-  /* Null pill */
   .null-val { color:var(--muted);font-style:italic;font-weight:400;font-size:12px; }
 </style>
 </head>
@@ -76,7 +73,7 @@
     </a>
   </div>
   <div class="topbar-actions">
-    <button class="theme-btn" onclick="toggleTheme()">
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
   </div>
@@ -91,7 +88,7 @@
         <h1 class="section-title">Prediction History</h1>
         <p class="section-sub" id="history-sub">Loading records…</p>
       </div>
-      <a href="predict.html" class="btn btn-primary" style="text-decoration:none;font-size:13px;padding:9px 16px;">
+      <a href="predict.html" class="btn btn-primary" style="font-size:13px;padding:9px 16px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New Assessment
       </a>
@@ -103,7 +100,7 @@
     <!-- Loading state -->
     <div id="table-loading" style="text-align:center;padding:3rem;color:var(--muted2);">
       <div style="display:inline-flex;align-items:center;gap:10px;">
-        <div class="spin"></div>
+        <div class="spin" style="width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;"></div>
         <span style="font-size:13px;">Fetching history…</span>
       </div>
     </div>
@@ -113,7 +110,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="10"/></svg>
       <h3>No predictions yet</h3>
       <p>Run a patient assessment to see results here.</p>
-      <a href="predict.html" class="btn btn-primary" style="margin-top:1.5rem;text-decoration:none;">Start Assessment</a>
+      <a href="predict.html" class="btn btn-primary" style="margin-top:1.5rem;">Start Assessment</a>
     </div>
 
     <!-- Error state -->
@@ -126,7 +123,7 @@
 
     <!-- Table -->
     <div id="table-wrap" style="display:none;">
-      <div class="card" style="overflow:hidden;">
+      <div class="card" style="overflow:hidden;padding:0;">
         <div class="table-wrap">
           <table>
             <thead>
@@ -164,7 +161,10 @@
       </button>
     </div>
     <div class="modal-body" id="modal-body">
-      <div class="modal-loading"><div class="spin"></div> Loading patient record…</div>
+      <div class="modal-loading">
+        <div class="spin" style="width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;"></div>
+        Loading patient record…
+      </div>
     </div>
   </div>
 </div>
@@ -172,16 +172,31 @@
 <script src="js/api.js"></script>
 <script>
 // Theme
-(function(){const s=localStorage.getItem('cardiosurv-theme');if(s==='light')document.body.classList.add('light');})();
-function toggleTheme(){const l=document.body.classList.toggle('light');localStorage.setItem('cardiosurv-theme',l?'light':'dark');}
+(function(){ const s = localStorage.getItem('cardiosurv-theme'); if (s === 'light') document.body.classList.add('light'); })();
+function toggleTheme() { const l = document.body.classList.toggle('light'); localStorage.setItem('cardiosurv-theme', l ? 'light' : 'dark'); }
 
 // Particle canvas
 (function(){
-  const canvas=document.getElementById('bg-canvas');const ctx=canvas.getContext('2d');let W,H,particles=[];
-  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
-  resize();window.addEventListener('resize',resize);
-  for(let i=0;i<30;i++){particles.push({x:Math.random()*1000,y:Math.random()*1000,r:Math.random()*1.2+0.3,vx:(Math.random()-0.5)*0.10,vy:(Math.random()-0.5)*0.10,o:Math.random()*0.3+0.04});}
-  function draw(){ctx.clearRect(0,0,W,H);particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;ctx.beginPath();ctx.arc(p.x%W,p.y%H,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(224,92,122,${p.o})`;ctx.fill();});requestAnimationFrame(draw);}
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  resize();
+  window.addEventListener('resize', resize);
+  for (let i = 0; i < 30; i++) {
+    particles.push({ x: Math.random()*1000, y: Math.random()*1000, r: Math.random()*1.2+0.3, vx: (Math.random()-0.5)*0.10, vy: (Math.random()-0.5)*0.10, o: Math.random()*0.3+0.04 });
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(224,92,122,${p.o})`; ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
   draw();
 })();
 
@@ -206,9 +221,9 @@ function improvementBadge(v) {
   const color = pv > 0 ? 'var(--green)' : 'var(--muted2)';
   return `<span style="color:${color};font-weight:700;">${pv > 0 ? '+' : ''}${pv}%</span>`;
 }
-function nullVal(v, suffix='') {
+function nullVal(v) {
   if (v == null || v === '') return '<span class="null-val">—</span>';
-  return v + suffix;
+  return String(v);
 }
 
 // ── LOAD PAGE ────────────────────────────────────────────────
@@ -230,15 +245,12 @@ async function loadPage(page) {
       return;
     }
 
-    // Sub-heading
     document.getElementById('history-sub').textContent =
       `${data.total} record${data.total !== 1 ? 's' : ''} · Page ${data.page} of ${Math.ceil(data.total / data.size)}`;
     totalPages = Math.ceil(data.total / data.size);
 
-    // Stats pills
     buildStats(data.items);
 
-    // Render rows
     const tbody = document.getElementById('history-tbody');
     tbody.innerHTML = '';
     data.items.forEach(item => {
@@ -256,11 +268,10 @@ async function loadPage(page) {
       tbody.appendChild(tr);
     });
 
-    // Pagination
     renderPagination(data.page, totalPages);
 
-    document.getElementById('table-wrap').style.display  = 'block';
-    document.getElementById('stats-row').style.display   = 'flex';
+    document.getElementById('table-wrap').style.display = 'block';
+    document.getElementById('stats-row').style.display  = 'flex';
 
   } catch(err) {
     document.getElementById('table-loading').style.display = 'none';
@@ -284,11 +295,9 @@ function renderPagination(current, total) {
   const pg = document.getElementById('pagination');
   if (total <= 1) { pg.innerHTML = ''; return; }
   let html = '';
-  // Prev
   html += `<button class="page-btn" onclick="loadPage(${current-1})" ${current===1?'disabled':''}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
   </button>`;
-  // Pages
   const range = [];
   for (let i=1;i<=total;i++) {
     if (i===1||i===total||Math.abs(i-current)<=1) range.push(i);
@@ -298,7 +307,6 @@ function renderPagination(current, total) {
     if (p==='...') html += `<span class="page-info">…</span>`;
     else html += `<button class="page-btn${p===current?' active':''}" onclick="loadPage(${p})">${p}</button>`;
   });
-  // Next
   html += `<button class="page-btn" onclick="loadPage(${current+1})" ${current===total?'disabled':''}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
   </button>`;
@@ -310,7 +318,7 @@ async function openPatientModal(patientId) {
   const overlay = document.getElementById('modal-overlay');
   const body    = document.getElementById('modal-body');
   document.getElementById('modal-patient-id').textContent = patientId;
-  body.innerHTML = '<div class="modal-loading"><div class="spin"></div> Loading patient record…</div>';
+  body.innerHTML = `<div class="modal-loading"><div class="spin" style="width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;"></div> Loading patient record…</div>`;
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 
@@ -331,7 +339,6 @@ function renderPatientModal(d) {
   const body = document.getElementById('modal-body');
   let html = '';
 
-  // Vitals
   if (d.vitals) {
     const v = d.vitals;
     html += `<div class="modal-section-title">Vitals</div>
@@ -343,7 +350,6 @@ function renderPatientModal(d) {
     </div>`;
   }
 
-  // Predictions
   if (d.predictions && d.predictions.length) {
     html += `<div class="modal-section-title">Predictions (${d.predictions.length})</div>`;
     d.predictions.forEach(p => {
@@ -359,7 +365,6 @@ function renderPatientModal(d) {
     });
   }
 
-  // Recommendations
   if (d.recommendations && d.recommendations.length) {
     html += `<div class="modal-section-title">Recommendations (${d.recommendations.length})</div>`;
     d.recommendations.forEach(r => {
@@ -391,7 +396,6 @@ function closeModalDirect() {
   document.getElementById('modal-overlay').classList.remove('open');
   document.body.style.overflow = '';
 }
-// ESC key
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModalDirect(); });
 
 // ── INIT ─────────────────────────────────────────────────────
