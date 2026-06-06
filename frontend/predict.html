@@ -385,6 +385,7 @@ async function handleSubmit() {
     }
 
     sessionStorage.setItem('cardiosurv-recommend', JSON.stringify(recommendResult));
+    window._navigating = true;
     window.location.href = 'results.html';
 
   } catch (err) {

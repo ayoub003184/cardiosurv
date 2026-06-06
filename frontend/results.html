@@ -144,7 +144,7 @@
   <div class="container" style="max-width:860px; width:100%;">
 
     <!-- No data state -->
-    <div id="no-data" class="empty-state" style="display:none; width:100%;">
+    <div id="no-data" class="empty-state" style="display:none; width:100%; flex-direction:column; align-items:center;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <h3>No results to display</h3>
       <p>Please complete the patient assessment form first.</p>
@@ -453,10 +453,11 @@ function renderResults(predict, recommend) {
   const rRaw = sessionStorage.getItem('cardiosurv-recommend');
 
   // Show results as long as predict data exists; recommend may be null
-  if (!pRaw) {
-    document.getElementById('no-data').style.display = 'block';
+  if (!pRaw || pRaw === 'null' || pRaw === 'undefined') {
+    document.getElementById('no-data').style.display = 'flex';
     return;
   }
+
   try {
     const predict   = JSON.parse(pRaw);
     // recommend may be the string "null" (from sessionStorage) or a parsed object
@@ -464,7 +465,7 @@ function renderResults(predict, recommend) {
     renderResults(predict, recommend);
   } catch(e) {
     console.error('Results parse error:', e);
-    document.getElementById('no-data').style.display = 'block';
+    document.getElementById('no-data').style.display = 'flex';
   }
 })();
 </script>
