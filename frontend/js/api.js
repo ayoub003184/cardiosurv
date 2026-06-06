@@ -3,7 +3,7 @@
 const API_BASE = (
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1"
-) ? "http://localhost:8000" : "https://cardiosurv.onrender.com";
+) ? "http://localhost:8000" : "https://cardiosurv-api.onrender.com";
 
 /**
  * Internal helper — fetch + parse JSON, throw on error with status code.
