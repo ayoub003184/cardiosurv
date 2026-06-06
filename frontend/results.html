@@ -340,7 +340,7 @@ function renderResults(predict, recommend) {
   document.getElementById('prediction-id-display').textContent = predict.prediction_id || '—';
   document.getElementById('model-version-display').textContent = predict.model_version  || '—';
   const ts = predict.created_at ? new Date(predict.created_at) : null;
-  document.getElementById('result-timestamp').textContent = ts ? 'Generated ' + ts.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' }) : 'Generated —';
+  document.getElementById('result-timestamp').textContent = ts ? 'Generated ' + ts.toLocaleString() : 'Generated —';
 
   // Risk
   const cat    = predict.risk_category || 'Unknown';
