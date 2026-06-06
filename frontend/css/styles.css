@@ -8,7 +8,7 @@
 
 :root {
   /* Default Dark Mode */
-  --bg:          #12141c; 
+  --bg:          #0a1047; /* Deep forest green — replaces near-black */
   --surface:     rgba(30, 32, 42, 0.6);
   --surface2:    rgba(45, 48, 62, 0.6);
   --surface3:    #3f4354;
@@ -33,7 +33,7 @@
   --risk-med:    #fbbf24; 
   --risk-high:   #f472b6;
 
-  /* ── FIX #3: 补充缺失的 bg 变量 ── */
+  /* ── Risk color fill backgrounds ── */
   --risk-low-bg:  rgba(45, 212, 191, 0.10);
   --risk-med-bg:  rgba(251, 191, 36, 0.10);
   --risk-high-bg: rgba(244, 114, 182, 0.12);
@@ -41,7 +41,7 @@
   --green-bg:     rgba(45, 212, 191, 0.10);
   --danger:       #f87171;
 
-  /* ── FIX #5: 修正字体变量 ── */
+  /* ── Font stacks ── */
   --font:        "Inter", system-ui, sans-serif;
   --serif:       "Fraunces", "Newsreader", serif;
 
@@ -59,7 +59,7 @@
 
 /* Light Theme */
 body.light {
-  --bg:          #f8fafc; 
+  --bg:          #7fbef5; 
   --surface:     rgba(255, 255, 255, 0.7);
   --surface2:    rgba(241, 245, 249, 0.7);
   --surface3:    #e2e8f0;
@@ -67,9 +67,9 @@ body.light {
   --border:      rgba(15, 23, 42, 0.06);
   --border2:     rgba(15, 23, 42, 0.12);
   
-  --text:        #0f172a;
-  --muted:       #64748b;
-  --muted2:      #94a3b8;
+  --text:        #090e18;
+  --muted:       #1e4c7a;
+  --muted2:      #1e4482;
   
   --accent:      #db2777;
   --accent2:     #be185d;
@@ -82,6 +82,9 @@ body.light {
   --risk-low-bg:  rgba(45, 212, 191, 0.12);
   --risk-med-bg:  rgba(251, 191, 36, 0.12);
   --risk-high-bg: rgba(219, 39, 119, 0.10);
+  --risk-low:  #09978b;
+  --risk-med:  #d97706;
+  --risk-high: #db2777;
   --green:        #0d9488;
   --green-bg:     rgba(45, 212, 191, 0.12);
   --danger:       #e11d48;
@@ -89,6 +92,8 @@ body.light {
   --shadow-soft: 0 24px 48px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.03);
 
   --model-color: 0.65, 0.7, 0.8;
+
+
 }
 
 /* ── RESET & BASE ───────────────────────────────────── */
@@ -216,14 +221,14 @@ body.light .aurora-blob { opacity: 0.7; filter: blur(120px); }
 }
 body.light .topbar { box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05); }
 
-/* ── FIX #6: 补充子页面 topbar logo 样式 ── */
+/* ── Sub-page topbar logo (predict / history / results) ── */
 .logo-wrap { display: flex; align-items: center; gap: 12px; }
-.logo-mark { display: none; } /* FIX #10: 修正大写 None */
+.logo-mark { display: none; } /* Hidden — logo mark not used */
 .logo-text-group { display: flex; flex-direction: row; align-items: baseline; gap: 12px; }
 .page-title { font-family: var(--serif); font-size: 1.5rem; font-weight: 500; color: var(--text); }
 .page-sub { font-size: 0.75rem; color: var(--muted); font-weight: 500; letter-spacing: 0.02em; }
 
-/* 子页面 topbar logo (predict / history / results) */
+/* Sub-page topbar logo (predict / history / results) */
 .topbar-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .topbar-logo-icon { display: flex; align-items: center; flex-shrink: 0; }
 .topbar-logo-name { font-family: var(--serif); font-size: 1.5rem; font-weight: 500; color: var(--text); }
@@ -281,7 +286,7 @@ body.light .topbar { box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05); }
   padding-bottom: 4rem;
 }
 
-/* ── FIX #9: 合并两处 .container 定义为一个 ── */
+/* ── Combined .container definition (single source of truth) ── */
 .container {
   width: 100%;
   max-width: 680px;
@@ -321,17 +326,6 @@ body.light .topbar { box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05); }
   border-radius: var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg);
 }
 
-/* ── API PILL ───────────────────────────────────────── */
-#api-pill {
-  display: inline-flex; align-items: center; gap: 10px;
-  padding: 6px 14px 6px 6px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-pill); font-size: 0.8rem; color: var(--text); margin-bottom: 2.5rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-}
-#api-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-#api-label { font-weight: 500; letter-spacing: 0.01em; }
-
 /* ── 3D MODEL ───────────────────────────────────────── */
 .gltf-model-container {
   width: 100%;
@@ -345,13 +339,13 @@ body.light .topbar { box-shadow: 0 8px 32px rgba(15, 23, 42, 0.05); }
 model-viewer:focus-visible { outline: none; }
 
 /* ── SECTION HEADER ─────────────────────────────────── */
-/* FIX #4: 补充缺失的 section-header / section-title 样式 */
+/* Section title and subtitle shared across pages */
 .section-header { margin-bottom: 1.5rem; }
 .section-title { font-family: var(--serif); font-size: 2rem; font-weight: 400; color: var(--text); letter-spacing: -0.02em; line-height: 1.2; }
 .section-sub { font-size: 0.9rem; color: var(--muted); margin-top: 0.4rem; line-height: 1.5; }
 
 /* ── TABLE ──────────────────────────────────────────── */
-/* FIX #4: 补充缺失的 table 样式 */
+/* History page table styles */
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
@@ -364,7 +358,7 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--surface2); }
 
 /* ── PAGINATION ─────────────────────────────────────── */
-/* FIX #4: 补充缺失的 pagination 样式 */
+/* History page pagination controls */
 .pagination { display: flex; align-items: center; gap: 6px; margin-top: 1.25rem; justify-content: center; flex-wrap: wrap; }
 .page-btn {
   padding: 6px 12px; background: var(--surface); border: 1px solid var(--border2);
@@ -378,7 +372,7 @@ tbody tr:hover { background: var(--surface2); }
 .page-info { font-size: 13px; color: var(--muted2); padding: 0 4px; }
 
 /* ── MODAL ──────────────────────────────────────────── */
-/* FIX #4: 补充缺失的 modal 样式 */
+/* Patient detail modal overlay and dialog */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 500;
   background: rgba(0, 0, 0, 0.55);
@@ -413,7 +407,7 @@ tbody tr:hover { background: var(--surface2); }
 .modal-close svg { width: 18px; height: 18px; }
 
 /* ── PROGRESS BAR ───────────────────────────────────── */
-/* FIX #4: 补充缺失的 progress 样式 */
+/* Confidence bar on results page */
 .progress-track { height: 6px; background: var(--surface2); border-radius: var(--r-pill); overflow: hidden; }
 .progress-bar { height: 100%; border-radius: var(--r-pill); transition: width 0.8s cubic-bezier(0.25, 1, 0.5, 1); }
 
@@ -456,7 +450,7 @@ tbody tr:hover { background: var(--surface2); }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
-/* FIX #2: field 包含错误提示区域 */
+/* FIX: field wrapper includes error message slot */
 .field {
   display: flex;
   flex-direction: column;
@@ -472,7 +466,7 @@ tbody tr:hover { background: var(--surface2); }
   letter-spacing: 0.05em;
 }
 
-/* FIX #2: 错误状态样式 */
+/* Error state — red border + glow on invalid fields */
 .field.has-error input,
 .field.has-error select {
   border-color: var(--accent) !important;
@@ -600,7 +594,7 @@ tbody tr:hover { background: var(--surface2); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── BACKGROUND CANVAS (子页面) ─────────────────────── */
+/* ── BACKGROUND CANVAS (sub-pages) ─────────────────── */
 #bg-canvas {
   position: fixed;
   top: 0; left: 0;
@@ -619,7 +613,7 @@ tbody tr:hover { background: var(--surface2); }
 #bg-canvas { z-index: 0 !important; }
 .aurora-bg { z-index: 0 !important; }
 
-/* 所有子页面内容需要在 canvas 上面 */
+/* All sub-page content must sit above the canvas */
 .inner-page, nav.topbar, header.topbar {
   position: relative;
   z-index: 1;

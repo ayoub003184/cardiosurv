@@ -6,6 +6,52 @@
 <title>CardioSurv — Patient Assessment</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 82C50 82 16 59 16 35C16 22 27 14 38 14C44 14 50 19 50 19C50 19 56 14 62 14C73 14 84 22 84 35C84 59 50 82 50 82Z' fill='%23e05c7a'/%3E%3Cpolyline points='18,50 30,50 37,36 44,64 51,42 57,57 64,50 82,50' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/styles.css">
+<script src="js/api.js" defer></script>
+<style>
+  .form-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--accent2);
+    margin: 1.75rem 0 1rem; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border2);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .form-section-title svg { width: 14px; height: 14px; }
+  .form-card {
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: var(--r-lg); padding: 1.75rem;
+    position: relative; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--border), 0 24px 48px rgba(0,0,0,0.3);
+  }
+  .form-card::before {
+    content:''; position:absolute; top:0;left:0;right:0; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(224,92,122,0.4),transparent);
+  }
+  .step-indicator {
+    display: flex; align-items: center; gap: 0; margin-bottom: 1.75rem;
+  }
+  .step { display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500; }
+  .step-num {
+    width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border2);
+    background:var(--surface2);color:var(--muted2);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  }
+  .step.active .step-num { border-color:var(--accent);background:var(--accent-dim);color:var(--accent2); }
+  .step.active .step-label { color:var(--text); }
+  .step-label { color:var(--muted2); }
+  .step-line { flex:1;height:1px;background:var(--border2);margin:0 8px; }
+  .arrhythmia-row {
+    background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);
+    padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all 0.2s;
+    margin-bottom:14px;
+  }
+  .arrhythmia-row:hover { border-color:var(--accent);background:var(--accent-dim); }
+  .arrhythmia-row input[type=checkbox] { width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;cursor:pointer; }
+  .arrhythmia-row .ar-text { flex:1; }
+  .arrhythmia-row .ar-title { font-size:13px;font-weight:600;color:var(--text); }
+  .arrhythmia-row .ar-sub { font-size:11px;color:var(--muted2);margin-top:2px; }
+  .submit-area { margin-top:1.5rem;border-top:1px solid var(--border2);padding-top:1.5rem; }
+  #form-error { display:none;margin-bottom:1rem; }
+</style>
 </head>
 <body>
 
@@ -63,7 +109,7 @@
           Demographics
         </div>
         <div class="grid-2">
-          <!-- FIX #2: 每个 field 加 err-* span -->
+          <!-- Each field includes an error message span below the input -->
           <div class="field" id="field-age">
             <label for="age">Age</label>
             <input type="number" id="age" name="age" placeholder="e.g. 56" min="1" max="120">
@@ -207,7 +253,7 @@
   </div><!-- /predict-page-container -->
 </div><!-- /inner-page -->
 
-<script src="js/api.js"></script>
+
 <script>
 // Theme
 (function(){ const s = localStorage.getItem('cardiosurv-theme'); if (s === 'light') document.body.classList.add('light'); })();
@@ -239,7 +285,7 @@ function toggleTheme() { const l = document.body.classList.toggle('light'); loca
 })();
 
 // ── FORM HELPERS ────────────────────────────────────────────
-// FIX #2: setFieldError 现在正确地显示/隐藏 field-error-msg span
+// setFieldError — shows or hides the inline error message for a field
 function setFieldError(name, msg) {
   const wrap  = document.getElementById('field-' + name);
   const errEl = document.getElementById('err-' + name);
@@ -322,9 +368,9 @@ async function handleSubmit() {
     const predictResult = await submitPredict(body);
 
     // Step 2: recommend
-    // FIX: Result 不显示的核心修复 ——
-    // 先把 predict 存进去，再请求 recommend。
-    // 如果 recommend 失败也不阻止跳转，只是 recommend 数据为 null。
+    // Step 2: store predict result first, then request recommendation.
+
+    // If recommend fails, navigation still proceeds; results.html handles null.
     sessionStorage.setItem('cardiosurv-predict', JSON.stringify(predictResult));
 
     let recommendResult = null;
@@ -334,7 +380,7 @@ async function handleSubmit() {
         has_arrhythmia: hasArrhythmia,
       });
     } catch (recErr) {
-      // recommend 失败不致命，results.html 会处理 null 的情况
+      // Non-fatal: results.html handles a null recommendation gracefully
       console.warn('Recommend API failed:', recErr.message);
     }
 
@@ -342,7 +388,7 @@ async function handleSubmit() {
     window.location.href = 'results.html';
 
   } catch (err) {
-    // predict 本身失败，显示错误
+    // predict call itself failed — display error to user
     const fe = document.getElementById('form-error');
     if (err.status === 422 && err.details && err.details.length) {
       err.details.forEach(d => { if (d.field) setFieldError(d.field, d.reason || 'Invalid value'); });
@@ -352,7 +398,7 @@ async function handleSubmit() {
     }
     fe.style.display = 'block';
   } finally {
-    // FIX: 无论成功还是失败（没跳转的情况），都恢复按钮
+    // Restore button state if navigation did not occur
     if (!window._navigating) {
       btn.disabled = false;
       btn.classList.remove('loading');
@@ -361,7 +407,7 @@ async function handleSubmit() {
   }
 }
 
-// 防止跳转后 finally 误触发
+// Guard flag to prevent finally block from restoring button after navigation
 window._navigating = false;
 const _origHref = Object.getOwnPropertyDescriptor(window.location, 'href');
 </script>

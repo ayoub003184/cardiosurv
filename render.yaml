@@ -1,14 +1,17 @@
-# Render Blueprint — CardioSurv API
+
+# Render Blueprint — CardioSurv (API + Frontend + Database)
 # Apply this file via Render Dashboard → "New +" → "Blueprint" → connect repo.
 #
 # Provisions:
-#   1) cardiosurv-api          — FastAPI web service
-#   2) cardiosurv-db           — PostgreSQL free tier (90-day expiry, then recreate)
+#   1) cardiosurv-api          — FastAPI web service (backend)
+#   2) cardiosurv-frontend     — Static Site (HTML/CSS/JS)
+#   3) cardiosurv-db           — PostgreSQL free tier (90-day expiry, then recreate)
 #
 # After first apply, the DB tables still need to be created — see
 # docs/deployment.md §"Initial DB setup".
 
 services:
+  # ── Backend API ─────────────────────────────────────────────────────────────
   - type: web
     name: cardiosurv-api
     runtime: python
@@ -35,8 +38,7 @@ services:
         value: models/survival_cox_v1.0.pkl
       - key: FEATURES_CSV
         value: data/processed/features.csv
-      # CORS — overwrite via dashboard once Law Zi Ying's frontend URL is known.
-      # Use "*" temporarily for the team integration test phase, then lock down.
+      # CORS — "*" during testing, tighten later to the frontend URL.
       - key: CORS_ORIGINS
         value: "*"
       # Database URL auto-injected from the PostgreSQL service below.
@@ -44,6 +46,33 @@ services:
         fromDatabase:
           name: cardiosurv-db
           property: connectionString
+
+  # ── Frontend Static Site ────────────────────────────────────────────────────
+  - type: web
+    name: cardiosurv-frontend
+    runtime: static
+    plan: free
+    branch: main
+    rootDir: frontend
+    buildCommand: ""
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    autoDeploy: true
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=0, must-revalidate
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      # SPA-style fallback: any unknown path serves index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
 
 databases:
   - name: cardiosurv-db

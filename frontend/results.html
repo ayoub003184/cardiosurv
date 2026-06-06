@@ -6,6 +6,7 @@
 <title>CardioSurv — Results</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 82C50 82 16 59 16 35C16 22 27 14 38 14C44 14 50 19 50 19C50 19 56 14 62 14C73 14 84 22 84 35C84 59 50 82 50 82Z' fill='%23e05c7a'/%3E%3Cpolyline points='18,50 30,50 37,36 44,64 51,42 57,57 64,50 82,50' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/styles.css">
+<script src="js/api.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   .results-grid { display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px; }
@@ -97,7 +98,7 @@
   }
   .patient-id-text { font-size:11px;color:var(--muted2);font-family:monospace; }
 
-  /* FIX: no-data 默认隐藏用 style，不要在 CSS 里设置 display */
+  /* no-data hidden by default via inline style, not CSS, to avoid display conflicts */
 </style>
 </head>
 <body>
@@ -287,7 +288,7 @@
   </div>
 </div>
 
-<script src="js/api.js"></script>
+
 <script>
 // Theme
 (function(){ const s = localStorage.getItem('cardiosurv-theme'); if (s === 'light') document.body.classList.add('light'); })();
@@ -330,7 +331,7 @@ function buildRiskIcon(cat) {
 function pct(v) { return Math.round(v * 100) + '%'; }
 
 // ── RENDER RESULTS ───────────────────────────────────────────
-// FIX: recommend 参数允许为 null
+// recommend parameter may be null if the recommend API call failed
 function renderResults(predict, recommend) {
   document.getElementById('results-content').style.display = 'block';
 
@@ -364,7 +365,7 @@ function renderResults(predict, recommend) {
     document.getElementById('conf-bar').style.width = confPct + '%';
   }, 150);
 
-  // ── Recommendation (FIX: 处理 null recommend) ──
+  // ── Recommendation — handle null gracefully ──
   if (!recommend) {
     document.getElementById('rec-data').style.display        = 'none';
     document.getElementById('rec-unavailable').style.display = 'block';
@@ -451,14 +452,14 @@ function renderResults(predict, recommend) {
   const pRaw = sessionStorage.getItem('cardiosurv-predict');
   const rRaw = sessionStorage.getItem('cardiosurv-recommend');
 
-  // FIX: 只要有 predict 数据就显示结果，recommend 允许为 null
+  // Show results as long as predict data exists; recommend may be null
   if (!pRaw) {
     document.getElementById('no-data').style.display = 'block';
     return;
   }
   try {
     const predict   = JSON.parse(pRaw);
-    // recommend 可能是字符串 "null" 或正常 JSON 对象
+    // recommend may be the string "null" (from sessionStorage) or a parsed object
     const recommend = rRaw && rRaw !== 'null' ? JSON.parse(rRaw) : null;
     renderResults(predict, recommend);
   } catch(e) {

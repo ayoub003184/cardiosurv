@@ -1,6 +1,9 @@
 // CardioSurv — API Client
-// One-line change for production:
-const API_BASE = "http://localhost:8000";
+// Auto-detects local vs production environment
+const API_BASE = (
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+) ? "http://localhost:8000" : "https://cardiosurv.onrender.com";
 
 /**
  * Internal helper — fetch + parse JSON, throw on error with status code.
@@ -54,7 +57,6 @@ async function getPatient(id) {
 }
 
 // ── CLIENT-SIDE VALIDATION ──────────────────────────────────────────────────
-// Returns { valid: bool, errors: { fieldName: message } }
 function validatePredictForm(data) {
   const errors = {};
 

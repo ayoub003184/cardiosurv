@@ -43,7 +43,7 @@
   }
 
   /* ── ECG ANIMATION ────────────────────────────────── */
-  /* 撑满整个视口宽度，突破 container 限制 */
+  /* Full viewport width — breaks out of container */
   .ecg-full-wrap {
     position: relative;
     left: 50%;
@@ -56,7 +56,7 @@
     overflow: hidden;
   }
 
-  /* canvas 由 JS 控制，铺满整个 wrap */
+  /* Canvas is sized and positioned by JS */
   #ecg-canvas {
     display: block;
     width: 100%;
@@ -80,7 +80,7 @@
     -webkit-backdrop-filter: blur(24px);
   }
 
-  /* FIX: hero-desc 文字在深色模式下更亮 */
+  /* hero-desc text is brighter in dark mode */
   .hero-desc {
     font-size: 1.1rem;
     color: #b8c4cf;
@@ -130,7 +130,7 @@
 
   .stat-number span { color: var(--accent); }
 
-  /* FIX: stat-label 更亮 */
+  /* stat-label is brighter in dark mode */
   .stat-label {
     font-size: 0.75rem;
     font-weight: 600;
@@ -150,9 +150,8 @@
   }
 
   .feature-pill {
-    padding: 0.9rem 1.4rem;
+    padding: 0.9rem 1.8rem;
     background: var(--surface2);
-    border-radius: var(--r-pill);
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--text);
@@ -161,6 +160,8 @@
     gap: 12px;
     border: 1px solid var(--border);
     transition: transform 0.3s ease, border-color 0.3s ease;
+    clip-path: polygon(16px 0%, 100% 0%, calc(100% - 16px) 100%, 0% 100%);
+    border-radius: 0;
   }
 
   .feature-pill:hover { transform: translateY(-2px); border-color: var(--border2); }
@@ -223,7 +224,7 @@
     color: var(--text); margin-bottom: 0.75rem;
   }
 
-  /* FIX: workflow desc 更亮 */
+  /* workflow step description is brighter in dark mode */
   .workflow-step-desc {
     font-size: 0.95rem;
     color: #b8c4cf;
@@ -248,7 +249,7 @@
     color: var(--text); margin-bottom: 0.75rem;
   }
 
-  /* FIX: risk ref subtitle 更亮 */
+  /* risk reference subtitle is brighter in dark mode */
   .risk-ref-header p {
     font-size: 1rem;
     color: #b8c4cf;
@@ -324,7 +325,7 @@
     margin-bottom: 1.5rem;
   }
 
-  /* FIX: rr-list 文字更亮 */
+  /* rr-list item text is brighter in dark mode */
   .rr-list li {
     font-size: 0.875rem;
     color: #b8c4cf;
@@ -350,7 +351,7 @@
     align-items: center; gap: 8px;
   }
 
-  /* FIX: rr-meta-key 更亮 */
+  /* rr-meta-key label is brighter in dark mode */
   .rr-meta-key {
     font-size: 0.7rem; font-weight: 700;
     color: #8fa0b0;
@@ -372,7 +373,7 @@
     border-radius: 12px;
     display: flex; align-items: flex-start; gap: 12px;
     font-size: 0.8rem;
-    /* FIX: disclaimer 文字更亮 */
+    /* disclaimer text is brighter in dark mode */
     color: #9aaab8;
     line-height: 1.5;
   }
@@ -478,10 +479,6 @@
     <main class="hero-section">
 
       <div class="hero-text-block">
-        <div id="api-pill">
-          <span id="api-dot"></span>
-          <span id="api-label">Connecting to API…</span>
-        </div>
 
         <h1 class="hero-display">
           Predict cardiac risk.<br>
@@ -497,10 +494,10 @@
             survival outcomes with and without treatment.
           </p>
           <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:2rem;">
-            <span style="padding:4px 12px; background:var(--surface2); border:1px solid var(--border2); border-radius:99px; font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">XGBoost</span>
-            <span style="padding:4px 12px; background:var(--surface2); border:1px solid var(--border2); border-radius:99px; font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">Cox PH Model</span>
-            <span style="padding:4px 12px; background:var(--surface2); border:1px solid var(--border2); border-radius:99px; font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">GRACE Score</span>
-            <span style="padding:4px 12px; background:var(--surface2); border:1px solid var(--border2); border-radius:99px; font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">BED Calculation</span>
+            <span style="padding:4px 16px; background:var(--surface2); border:1px solid var(--border2); clip-path:polygon(10px 0%,100% 0%,calc(100% - 10px) 100%,0% 100%); font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">XGBoost</span>
+            <span style="padding:4px 16px; background:var(--surface2); border:1px solid var(--border2); clip-path:polygon(10px 0%,100% 0%,calc(100% - 10px) 100%,0% 100%); font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">Cox PH Model</span>
+            <span style="padding:4px 16px; background:var(--surface2); border:1px solid var(--border2); clip-path:polygon(10px 0%,100% 0%,calc(100% - 10px) 100%,0% 100%); font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">GRACE Score</span>
+            <span style="padding:4px 16px; background:var(--surface2); border:1px solid var(--border2); clip-path:polygon(10px 0%,100% 0%,calc(100% - 10px) 100%,0% 100%); font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">BED Calculation</span>
           </div>
           <div class="action-group">
             <a href="predict.html" class="btn btn-primary">
@@ -669,7 +666,7 @@
         <div>
           <p style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent2);margin-bottom:0.5rem;">Ready to begin?</p>
           <h3 style="font-family:var(--serif);font-size:1.8rem;font-weight:400;color:var(--text);letter-spacing:-0.01em;margin-bottom:0.5rem;line-height:1.2;">Run your first assessment</h3>
-          <p style="font-size:0.9rem;color:#b8c4cf;line-height:1.5;max-width:380px;">Enter clinical data and get a risk classification, treatment recommendation, and 2-year survival estimate in seconds.</p>
+          <p style="font-size:0.9rem;color:#6e8396;line-height:1.5;max-width:380px;">Enter clinical data and get a risk classification, treatment recommendation, and 2-year survival estimate in seconds.</p>
         </div>
         <a href="predict.html" class="btn btn-primary" style="font-size:1rem;padding:1rem 2rem;flex-shrink:0;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
@@ -681,7 +678,7 @@
     <!-- ── DISCLAIMER ── -->
     <div class="disclaimer-bar reveal">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <span><strong style="color:#b8c4cf;font-weight:600;">Research &amp; Educational Use Only.</strong> CardioSurv is a machine learning prototype developed for AIT201 Applied Machine Learning at XMUM. It is not intended for clinical diagnosis, medical advice, or patient care decisions. All outputs should be interpreted by qualified medical professionals.</span>
+      <span><strong style="color:#9ca5af;font-weight:600;">Research &amp; Educational Use Only.</strong> CardioSurv is a machine learning prototype developed for AIT201 Applied Machine Learning at XMUM. It is not intended for clinical diagnosis, medical advice, or patient care decisions. All outputs should be interpreted by qualified medical professionals.</span>
     </div>
 
     <!-- ── FOOTER ── -->
@@ -693,8 +690,8 @@
   </div><!-- /container-lg -->
 </div><!-- /page-wrap -->
 
-<!-- ECG canvas: 在 container 外面，撑满视口 -->
-<!-- 它会被 JS 定位到 hero 文字下方 -->
+<!-- ECG canvas: outside the container, fills full viewport width -->
+<!-- Positioned by JS below the hero text block -->
 <canvas id="ecg-canvas" aria-hidden="true" style="
   display:block;
   position:absolute;
@@ -715,26 +712,33 @@ function toggleTheme() {
   updateModelMaterial();
 }
 
-// Splash + API
-(async function init(){
+// Apply silver metallic material to the 3D heart model
+function updateModelMaterial() {
+  const mv = document.querySelector('#heart-model');
+  if (!mv || !mv.model || !mv.model.materials) return;
+  const colorStr = getComputedStyle(document.body).getPropertyValue('--model-color');
+  const rgb = colorStr.split(',').map(n => parseFloat(n));
+  mv.model.materials.forEach(mat => {
+    mat.pbrMetallicRoughness.setBaseColorFactor([...rgb, 1]);
+    mat.pbrMetallicRoughness.setMetallicFactor(0.8);
+    mat.pbrMetallicRoughness.setRoughnessFactor(0.3);
+  });
+}
+
+// Apply material once the model has loaded
+document.querySelector('#heart-model')?.addEventListener('load', () => {
+  updateModelMaterial();
+});
+
+
+// Splash screen dismiss
+(function initSplash(){
   setTimeout(() => {
     const splash  = document.getElementById('splash');
     const content = document.getElementById('main-content');
     splash.classList.add('hide');
     setTimeout(() => { splash.style.display = 'none'; content.classList.add('visible'); }, 900);
   }, 2000);
-
-  try {
-    const res = await fetch('http://localhost:8000/api/v1/health');
-    const d   = await res.json();
-    if (d.status === 'ok') {
-      document.getElementById('api-dot').style.background = 'var(--green)';
-      document.getElementById('api-label').textContent    = 'API online — ' + d.version;
-    }
-  } catch(e) {
-    document.getElementById('api-dot').style.background = 'var(--danger)';
-    document.getElementById('api-label').textContent    = 'API offline — check localhost:8000';
-  }
 })();
 
 // ── SCROLL REVEAL ──────────────────────────────────────────
@@ -788,79 +792,78 @@ function toggleTheme() {
   obs.observe(ticker);
 })();
 
-// ── ECG CANVAS — 撑满视口，波形有变化 ─────────────────────────
+// ── ECG CANVAS — Full viewport width, varied waveform ──────────
 (function(){
   const canvas = document.getElementById('ecg-canvas');
   if (!canvas) return;
   const ctx    = canvas.getContext('2d');
 
-  // 把 canvas 定位到 hero-text-block 下面
+  // Position the canvas below the hero text block
   function positionCanvas() {
     const hero = document.querySelector('.hero-text-block');
     if (!hero) return;
     const rect = hero.getBoundingClientRect();
     const scrollY = window.scrollY || window.pageYOffset;
-    // 放在标题文字块的底部下方
+    // Place canvas just below the bottom of the hero text block
     canvas.style.top  = (scrollY + rect.bottom + 12) + 'px';
     canvas.width  = window.innerWidth;
     canvas.height = 60;
   }
 
-  // 生成一段带随机变化的 ECG 路径点
-  // 一个完整心跳周期包含：P波、QRS波群（Q下、R上、S下）、T波
+  // Generate one ECG beat cycle: P-wave, QRS complex (Q dip, R peak, S valley), T-wave
   function makeECGCycle(startX, midY, scale) {
-    // scale: 0.7~1.3 让每个周期振幅略有不同
+    // scale: 0.7–1.3 gives slight amplitude variation per cycle
     const h  = canvas.height;
     const cy = midY;
     const s  = scale;
     const pts = [];
 
-    // 平线段
+    // Baseline
     pts.push([startX,        cy]);
     pts.push([startX + 18,   cy]);
 
-    // P波（小隆起）
+    // P-wave (small hump)
     pts.push([startX + 26,   cy - 5 * s]);
     pts.push([startX + 34,   cy]);
 
-    // PR平段
+    // PR segment
     pts.push([startX + 44,   cy]);
 
-    // Q波（微小下凹）
+    // Q dip (slight downward notch)
     pts.push([startX + 48,   cy + 3 * s]);
 
-    // R波（高尖峰）—— 每次高度略有不同
+    // R peak (tall spike) — height varies slightly each cycle
     const rHeight = (20 + (Math.random() * 6 - 3)) * s;
     pts.push([startX + 53,   cy - rHeight]);
 
-    // S波（深谷）
+    // S valley (deep trough)
     const sDepth = (12 + (Math.random() * 4 - 2)) * s;
     pts.push([startX + 58,   cy + sDepth]);
 
-    // 回基线
+    // Return to baseline
     pts.push([startX + 65,   cy]);
 
-    // ST段
+    // ST segment
     pts.push([startX + 78,   cy]);
 
-    // T波（宽缓圆包）
+    // T-wave (broad rounded hump)
     const tHeight = (8 + (Math.random() * 4 - 2)) * s;
     pts.push([startX + 88,   cy - tHeight]);
     pts.push([startX + 100,  cy]);
 
-    // 收尾平线
+    // Trailing baseline
     pts.push([startX + 115,  cy]);
 
     return pts;
   }
 
-  // 把点数组画成折线
+  // Draw the point array as a smoothed polyline using bezier curves
   function drawPath(pts, color, alpha) {
     if (!pts || pts.length < 2) return;
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) {
-      // 用贝塞尔让波形更顺滑
+      // Bezier smoothing for organic waveform shape
       const prev = pts[i - 1];
       const cur  = pts[i];
       const cpx  = (prev[0] + cur[0]) / 2;
@@ -875,31 +878,31 @@ function toggleTheme() {
     ctx.globalAlpha = 1;
   }
 
-  // 每条 ECG 轨道：独立的 X 偏移 + 速度 + 随机种子
-  const CYCLE_W = 115; // 一个周期的宽度
+  // Each ECG track has its own X offset, speed, Y position and opacity
+  const CYCLE_W = 115; // width of one full beat cycle in pixels
   const TRACKS  = [
     { x: 0,    speed: 0.6, y: 0.5,  scale: 1.0,  opacity: 0.75 },
     { x: -200, speed: 0.5, y: 0.45, scale: 0.85, opacity: 0.35 },
     { x: -60,  speed: 0.7, y: 0.55, scale: 0.7,  opacity: 0.20 },
   ];
 
-  // 预生成多段不同 scale 的周期，让波形"看起来不一样"
-  // 每条轨道维护一个队列，x 轴滚过后就换下一个随机周期
+  // Pre-generate scale pools per track so each cycle looks visually distinct
+  // Each track maintains a pool; a fresh scale is picked when a cycle scrolls past
   const POOL_SIZE = 12;
   function genPool() {
     return Array.from({ length: POOL_SIZE }, () => 0.75 + Math.random() * 0.55);
   }
   const pools = TRACKS.map(() => genPool());
-  // 当前每条轨道的 pool 索引
+  // Current pool index per track
   const poolIdx = TRACKS.map(() => 0);
 
-  // 获取某个位置对应的 scale（根据 x 模 CYCLE_W 的周期位置决定用哪个 pool 条目）
+  // Return scale for a given track index and cycle number
   function getScaleAt(trackI, cycleNum) {
     const idx = ((cycleNum % POOL_SIZE) + POOL_SIZE) % POOL_SIZE;
     return pools[trackI][idx];
   }
 
-  let accentColor = '#f472b6'; // 深色模式默认
+  let accentColor = '#f472b6'; // Default dark mode accent
   function updateColor() {
     const isLight = document.body.classList.contains('light');
     accentColor   = isLight ? '#db2777' : '#f472b6';
@@ -912,13 +915,13 @@ function toggleTheme() {
     updateColor();
 
     TRACKS.forEach((track, ti) => {
-      // 移动 x
+      // Advance x position
       track.x -= track.speed;
 
       const cy     = canvas.height * track.y;
       const startX = ((track.x % CYCLE_W) - CYCLE_W + canvas.width) % canvas.width;
 
-      // 画足够多的周期覆盖整个宽度（从屏幕左侧以外开始）
+      // Draw enough cycles to fill the full viewport width, starting off-screen left
       const numCycles = Math.ceil(canvas.width / CYCLE_W) + 3;
       for (let c = -2; c < numCycles; c++) {
         const cx      = startX + c * CYCLE_W - CYCLE_W * 2;
@@ -932,27 +935,12 @@ function toggleTheme() {
     requestAnimationFrame(draw);
   }
 
-  // 初始化位置，然后开始动画
+  // Initialise position, then start animation loop
   positionCanvas();
   window.addEventListener('resize', positionCanvas);
   window.addEventListener('scroll', positionCanvas);
   draw();
 })();
-</script>
-
-<script>
-function updateModelMaterial() {
-  const mv = document.querySelector('#heart-model');
-  if (!mv || !mv.model || !mv.model.materials) return;
-  const colorStr = getComputedStyle(document.body).getPropertyValue('--model-color');
-  const rgb = colorStr.split(',').map(n => parseFloat(n));
-  mv.model.materials.forEach(mat => {
-    mat.pbrMetallicRoughness.setBaseColorFactor([...rgb, 1]);
-    mat.pbrMetallicRoughness.setMetallicFactor(0.8);
-    mat.pbrMetallicRoughness.setRoughnessFactor(0.3);
-  });
-}
-document.querySelector('#heart-model').addEventListener('load', updateModelMaterial);
 </script>
 
 </body>
