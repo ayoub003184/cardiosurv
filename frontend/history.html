@@ -209,7 +209,7 @@ let totalPages  = 1;
 function pct(v) { return v != null ? Math.round(v * 100) + '%' : '<span class="null-val">—</span>'; }
 function fmtDate(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  return new Date(iso).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 function shortId(id) { return id ? id.slice(0,8) + '…' : '—'; }
 function riskDot(cat) {
