@@ -7,6 +7,20 @@ Saves publication-quality PNGs to reports/figures/ for use in the report
 and slides. All four plot functions accept a `save_path` and return the
 matplotlib Figure so notebooks can display inline as well.
 
+plot_confusion_matrix() and plot_feature_importance() are model-aware:
+pass model_key="rf" or model_key="xgb" to get a correctly titled and
+correctly named figure for each classifier. Calling both functions once
+per model produces the four comparison figures used in the report:
+
+    reports/figures/confusion_matrix_rf.png
+    reports/figures/confusion_matrix_xgb.png
+    reports/figures/feature_importance_rf.png
+    reports/figures/feature_importance_xgb.png
+
+model_key is keyword-only so existing positional calls
+(cm, labels, save_path) and (importance_df, save_path) still work
+unchanged and default to the Random Forest figure names/titles.
+
 Spec source: docs/tasks_2.pdf §B
 """
 
@@ -43,6 +57,19 @@ plt.rcParams.update({
     "axes.spines.right": False,
 })
 
+# Display name + importance-axis label per model. RF importances are
+# mean decrease in impurity (Gini); XGBoost's default feature_importances_
+# is gain-based — these are not the same quantity, so the axis label
+# is kept model-specific to avoid mislabeling either figure.
+MODEL_INFO = {
+    "rf":  {"display_name": "Random Forest", "importance_label": "Importance (mean decrease in impurity)"},
+    "xgb": {"display_name": "XGBoost",        "importance_label": "Importance (gain)"},
+}
+
+
+def _model_info(model_key: str) -> dict:
+    return MODEL_INFO.get(model_key, {"display_name": model_key, "importance_label": "Importance"})
+
 
 # ---------------------------------------------------------------------------
 # 1. Confusion matrix
@@ -51,16 +78,23 @@ plt.rcParams.update({
 def plot_confusion_matrix(
     cm,
     labels: Sequence[str] = ("Low", "Medium", "High"),
-    save_path: str | Path = FIG_DIR / "confusion_matrix.png",
+    save_path: str | Path | None = None,
+    *,
+    model_key: str = "rf",
 ):
     """
-    Annotated heatmap of a confusion matrix.
+    Annotated heatmap of a confusion matrix for a single model.
+
+    Call once per model (model_key="rf" and model_key="xgb") to produce
+    the two comparison figures.
 
     Parameters
     ----------
     cm        : 2D array-like — rows=true, cols=pred.
     labels    : class names in row/column order.
-    save_path : where to write the PNG.
+    save_path : where to write the PNG. Defaults to
+                reports/figures/confusion_matrix_{model_key}.png.
+    model_key : "rf" or "xgb" — controls the title and default filename.
 
     Returns
     -------
@@ -68,6 +102,10 @@ def plot_confusion_matrix(
     """
     cm = np.asarray(cm)
     labels = list(labels)
+    info = _model_info(model_key)
+
+    if save_path is None:
+        save_path = FIG_DIR / f"confusion_matrix_{model_key}.png"
 
     fig, ax = plt.subplots(figsize=(7, 5.5))
     sns.heatmap(
@@ -82,13 +120,14 @@ def plot_confusion_matrix(
         linecolor="white",
         ax=ax,
     )
-    ax.set_title("Risk Classifier — Confusion Matrix", pad=12)
+    ax.set_title(f"{info['display_name']} — Confusion Matrix", pad=12)
     ax.set_xlabel("Predicted Risk")
     ax.set_ylabel("Actual Risk")
     plt.tight_layout()
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches="tight")
+    print(f"[plots] Saved {save_path}")
     return fig
 
 
@@ -235,15 +274,27 @@ def plot_km_curves(
 
 def plot_feature_importance(
     importance_df: pd.DataFrame,
-    save_path: str | Path = FIG_DIR / "feature_importance.png",
+    save_path: str | Path | None = None,
+    *,
+    model_key: str = "rf",
 ):
     """
-    Horizontal bar chart of the top-15 most important features.
+    Horizontal bar chart of the top-15 most important features for a
+    single model.
+
+    Call once per model (model_key="rf" and model_key="xgb") to produce
+    the two comparison figures. The x-axis label is model-specific since
+    Random Forest importances (mean decrease in impurity) and XGBoost's
+    default importances (gain) are different quantities and shouldn't be
+    presented under a shared label.
 
     Parameters
     ----------
     importance_df : DataFrame with columns ['feature','importance'].
-    save_path     : where to write the PNG.
+    save_path     : where to write the PNG. Defaults to
+                     reports/figures/feature_importance_{model_key}.png.
+    model_key     : "rf" or "xgb" — controls the title, x-axis label, and
+                     default filename.
 
     Returns
     -------
@@ -251,6 +302,10 @@ def plot_feature_importance(
     """
     if not {"feature", "importance"}.issubset(importance_df.columns):
         raise ValueError("importance_df must have columns ['feature','importance']")
+
+    info = _model_info(model_key)
+    if save_path is None:
+        save_path = FIG_DIR / f"feature_importance_{model_key}.png"
 
     top = (
         importance_df
@@ -268,12 +323,13 @@ def plot_feature_importance(
         color=PALETTE["primary"],
         ax=ax,
     )
-    ax.set_title("XGBoost — Top 15 Feature Importances", pad=12)
-    ax.set_xlabel("Importance (gain)")
+    ax.set_title(f"{info['display_name']} — Top 15 Feature Importances", pad=12)
+    ax.set_xlabel(info["importance_label"])
     ax.set_ylabel("")
     ax.grid(axis="x", alpha=0.3)
     plt.tight_layout()
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches="tight")
+    print(f"[plots] Saved {save_path}")
     return fig
