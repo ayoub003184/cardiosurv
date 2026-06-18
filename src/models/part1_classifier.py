@@ -5,6 +5,12 @@ Trains a Random Forest and an XGBoost classifier on features.csv,
 evaluates both, saves the winner, and exposes a predict() function
 the API layer can call with a single dict.
 
+Also generates four diagnostic figures to reports/figures/:
+    confusion_matrix_rf.png
+    confusion_matrix_xgb.png
+    feature_importance_rf.png
+    feature_importance_xgb.png
+
 Usage
 -----
     python -m src.models.part1_classifier
@@ -26,6 +32,10 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")  # headless-safe backend; must be set before pyplot import
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score,
@@ -42,9 +52,19 @@ import xgboost as xgb
 # ---------------------------------------------------------------------------
 # Paths (relative to project root; override with env vars if needed)
 # ---------------------------------------------------------------------------
-DATA_PATH   = Path(os.getenv("FEATURES_CSV",  "data/processed/features.csv"))
-MODEL_PATH  = Path(os.getenv("MODEL_PATH",    "models/part1_classifier_v1.0.pkl"))
+DATA_PATH     = Path(os.getenv("FEATURES_CSV",  "data/processed/features.csv"))
+MODEL_PATH    = Path(os.getenv("MODEL_PATH",    "models/part1_classifier_v1.0.pkl"))
+FIGURES_DIR   = Path(os.getenv("FIGURES_DIR",   "reports/figures"))
 MODEL_VERSION = "part1_classifier_v1.0"
+
+# Shared colour palette (kept consistent with src/evaluation/plots.py)
+PALETTE = {
+    "Low": "#2ecc71",
+    "Medium": "#f39c12",
+    "High": "#e74c3c",
+    "primary": "#3498db",
+    "secondary": "#9b59b6",
+}
 
 # ---------------------------------------------------------------------------
 # Feature / label configuration
@@ -147,6 +167,73 @@ def evaluate(model, X_test: np.ndarray, y_test: np.ndarray) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# 3b.  Figure generation  (confusion matrices + feature importance)
+# ---------------------------------------------------------------------------
+
+def plot_confusion_matrix(
+    cm: list[list[int]],
+    labels: list[str],
+    title: str,
+    save_path: str | Path,
+):
+    """
+    Save an annotated confusion-matrix heatmap (rows=actual, cols=predicted).
+    """
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    cm_arr = np.array(cm)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4.8))
+    sns.heatmap(
+        cm_arr,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=labels,
+        yticklabels=labels,
+        cbar=False,
+        linewidths=0.5,
+        linecolor="white",
+        ax=ax,
+    )
+    ax.set_xlabel("Predicted label")
+    ax.set_ylabel("Actual label")
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=300)
+    plt.close(fig)
+    print(f"[part1] Saved {save_path}")
+
+
+def plot_feature_importance(
+    model,
+    feature_names: list[str],
+    title: str,
+    save_path: str | Path,
+    top_n: int = 15,
+):
+    """
+    Save a horizontal bar chart of the top_n feature importances.
+    Works for any estimator exposing `feature_importances_`
+    (RandomForestClassifier and XGBClassifier both do).
+    """
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    importances = np.asarray(model.feature_importances_)
+    order = np.argsort(importances)[::-1][:top_n]
+    top_features    = [feature_names[i] for i in order][::-1]   # reversed for barh top-down
+    top_importances = importances[order][::-1]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.barh(top_features, top_importances, color=PALETTE["primary"])
+    ax.set_xlabel("Importance (mean decrease in impurity)")
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=300)
+    plt.close(fig)
+    print(f"[part1] Saved {save_path}")
+
+
+# ---------------------------------------------------------------------------
 # 4.  Inference  (this is what the API calls)
 # ---------------------------------------------------------------------------
 
@@ -217,7 +304,7 @@ def load(path: str | Path = MODEL_PATH) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 6.  main()  –  load → split → train both → compare → save winner
+# 6.  main()  –  load → split → train both → compare → save winner → figures
 # ---------------------------------------------------------------------------
 
 def main() -> None:
@@ -240,14 +327,12 @@ def main() -> None:
     )
     print(f"[part1] Train: {len(X_train_raw)} rows, Test: {len(X_test_raw)} rows")
 
-    # ── Build preprocessor ──────────────────────────────────────────────────
-    preprocessor = build_preprocessing_pipeline()
-
     # ── Random Forest ───────────────────────────────────────────────────────
     print("[part1] Training Random Forest ...")
     t0 = time.time()
+    rf_preprocessor = build_preprocessing_pipeline()
     rf_pipeline = Pipeline([
-        ("pre", preprocessor),
+        ("pre", rf_preprocessor),
         ("clf", RandomForestClassifier(
             n_estimators=300, max_depth=None,
             class_weight="balanced", random_state=42, n_jobs=-1,
@@ -264,9 +349,6 @@ def main() -> None:
     # ── XGBoost ─────────────────────────────────────────────────────────────
     print("[part1] Training XGBoost ...")
     t0 = time.time()
-
-    # Fit preprocessor on training data using the RF pipeline's fitted preprocessor
-    # (already fitted above — reuse it for XGB to keep transforms identical)
     xgb_preprocessor = build_preprocessing_pipeline()
     xgb_pipeline = Pipeline([
         ("pre", xgb_preprocessor),
@@ -286,17 +368,17 @@ def main() -> None:
 
     # ── Pick winner ─────────────────────────────────────────────────────────
     if xgb_metrics["f1_macro"] >= rf_metrics["f1_macro"]:
-        winner_name    = "XGBoost"
+        winner_name     = "XGBoost"
         winner_pipeline = xgb_pipeline
         winner_metrics  = xgb_metrics
     else:
-        winner_name    = "RandomForest"
+        winner_name     = "RandomForest"
         winner_pipeline = rf_pipeline
         winner_metrics  = rf_metrics
 
     print(f"[part1] Winner: {winner_name}")
 
-    # ── Save bundle ─────────────────────────────────────────────────────────
+    # ── Save bundle (winner only — used by the API) ─────────────────────────
     bundle = {
         "pipeline":      winner_pipeline,
         "label_encoder": le,
@@ -309,14 +391,42 @@ def main() -> None:
         "feature_cols": feature_cols,
     }
     save(bundle, MODEL_PATH)
-    print(f"[part1] Saved models/part1_classifier_v1.0.pkl")
 
-    # ── Confusion matrix summary ─────────────────────────────────────────────
-    print("\n[part1] Confusion Matrix (rows=actual, cols=predicted):")
+    # ── Confusion matrix summary (console) ───────────────────────────────────
+    print("\n[part1] Confusion Matrix (rows=actual, cols=predicted) — winner:")
     print(f"        {'Low':>6}  {'Medium':>6}  {'High':>6}")
     for i, row_label in enumerate(LABEL_ORDER):
         row_vals = winner_metrics["confusion_matrix"][i]
         print(f"  {row_label:<7}  {row_vals[0]:>5}   {row_vals[1]:>5}   {row_vals[2]:>5}")
+
+    # ── Figures: confusion matrix + feature importance, for BOTH models ─────
+    print("\n[part1] Generating figures ...")
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Feature names after one-hot encoding, taken from each fitted preprocessor
+    rf_feature_names  = list(rf_pipeline.named_steps["pre"].get_feature_names_out())
+    xgb_feature_names = list(xgb_pipeline.named_steps["pre"].get_feature_names_out())
+
+    plot_confusion_matrix(
+        rf_metrics["confusion_matrix"], LABEL_ORDER,
+        title="Random Forest — Confusion Matrix",
+        save_path=FIGURES_DIR / "confusion_matrix_rf.png",
+    )
+    plot_confusion_matrix(
+        xgb_metrics["confusion_matrix"], LABEL_ORDER,
+        title="XGBoost — Confusion Matrix",
+        save_path=FIGURES_DIR / "confusion_matrix_xgb.png",
+    )
+    plot_feature_importance(
+        rf_pipeline.named_steps["clf"], rf_feature_names,
+        title="Random Forest — Top 15 Feature Importances",
+        save_path=FIGURES_DIR / "feature_importance_rf.png",
+    )
+    plot_feature_importance(
+        xgb_pipeline.named_steps["clf"], xgb_feature_names,
+        title="XGBoost — Top 15 Feature Importances",
+        save_path=FIGURES_DIR / "feature_importance_xgb.png",
+    )
 
     # ── Quick smoke-test with predict() ─────────────────────────────────────
     print("\n[part1] Smoke-test predict():")
