@@ -323,3 +323,63 @@ def plot_feature_importance(
     fig.savefig(save_path, bbox_inches="tight")
 
     return fig
+
+
+# ---------------------------------------------------------------------------
+# 5. Feature importance — Random Forest
+# ---------------------------------------------------------------------------
+
+
+def plot_rf_feature_importance(
+    importance_df: pd.DataFrame,
+    save_path: str | Path = FIG_DIR / "rf_feature_importance.png",
+):
+    """
+    Horizontal bar chart of the top-15 most important features from Random Forest.
+
+    Parameters
+    ----------
+    importance_df : DataFrame with columns ['feature','importance'].
+    save_path : where to write the PNG.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    if not {"feature", "importance"}.issubset(importance_df.columns):
+        raise ValueError(
+            "importance_df must have columns ['feature','importance']"
+        )
+
+    # Get top 15, already sorted in descending order
+    top = (
+        importance_df.sort_values("importance", ascending=False)
+        .head(15)
+        .reset_index(drop=True)
+    )
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+
+    # Use ax.barh directly instead of sns.barplot to avoid automatic sorting
+    # Plot in ascending order so highest importance is at the top
+    y_pos = np.arange(len(top))
+    ax.barh(y_pos, top["importance"].values, color=PALETTE["secondary"])
+    
+    # Set labels in correct order (highest at top)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(top["feature"].values)
+    
+    # Reverse y-axis so highest importance is at top
+    ax.invert_yaxis()
+
+    ax.set_title("Random Forest — Top 15 Feature Importances", pad=12)
+    ax.set_xlabel("Importance (MDI)")
+    ax.set_ylabel("")
+    ax.grid(axis="x", alpha=0.3)
+
+    plt.tight_layout()
+
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, bbox_inches="tight")
+
+    return fig
