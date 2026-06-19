@@ -291,22 +291,26 @@ def plot_feature_importance(
             "importance_df must have columns ['feature','importance']"
         )
 
+    # Get top 15, already sorted in descending order
     top = (
         importance_df.sort_values("importance", ascending=False)
         .head(15)
-        .iloc[::-1]  # reverse so largest is on top of the bar chart
         .reset_index(drop=True)
     )
 
     fig, ax = plt.subplots(figsize=(9, 7))
 
-    sns.barplot(
-        data=top,
-        x="importance",
-        y="feature",
-        color=PALETTE["primary"],
-        ax=ax,
-    )
+    # Use ax.barh directly instead of sns.barplot to avoid automatic sorting
+    # Plot in ascending order so highest importance is at the top
+    y_pos = np.arange(len(top))
+    ax.barh(y_pos, top["importance"].values, color=PALETTE["primary"])
+    
+    # Set labels in correct order (highest at top)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(top["feature"].values)
+    
+    # Reverse y-axis so highest importance is at top
+    ax.invert_yaxis()
 
     ax.set_title("XGBoost — Top 15 Feature Importances", pad=12)
     ax.set_xlabel("Importance (gain)")
