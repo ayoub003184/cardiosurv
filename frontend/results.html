@@ -349,7 +349,7 @@ function renderResults(predict, recommend) {
   document.getElementById('risk-icon-wrap').innerHTML = buildRiskIcon(cat);
   document.getElementById('risk-cat-text').textContent = cat + ' Risk';
   document.getElementById('risk-cat-text').style.color = RISK_COLORS[cat] || 'var(--text)';
-  document.getElementById('risk-cat-sub').textContent  = 'Classification by XGBoost model';
+  document.getElementById('risk-cat-sub').textContent  = 'Classification by Random Forest model';
 
   // Probability pills
   if (predict.probabilities) {
