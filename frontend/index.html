@@ -489,9 +489,7 @@
       <div class="hero-card-block">
         <div class="hero-context-card">
           <p class="hero-desc">
-            CardioSurv uses an XGBoost classifier and Cox survival model to classify
-            cardiovascular risk, recommend intervention type, and compare 2-year
-            survival outcomes with and without treatment.
+            CardioSurv pairs a Random Forest risk classifier with an XGBoost treatment recommender and a Cox survival model to classify cardiovascular risk and recommend a targeted intervention.
           </p>
           <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:2rem;">
             <span style="padding:4px 16px; background:var(--surface2); border:1px solid var(--border2); clip-path:polygon(10px 0%,100% 0%,calc(100% - 10px) 100%,0% 100%); font-size:0.75rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;">XGBoost</span>
@@ -513,15 +511,15 @@
       <div style="width:100%;" class="reveal">
         <div class="stats-ticker">
           <div class="stat-item">
-            <div class="stat-number" id="stat-0">918<span>+</span></div>
+            <div class="stat-number" id="stat-0">1421</div>
             <div class="stat-label">Training Samples</div>
           </div>
           <div class="stat-item">
-            <div class="stat-number" id="stat-1">0<span>.</span>91</div>
-            <div class="stat-label">XGBoost AUC</div>
+            <div class="stat-number" id="stat-1">0<span>.</span>99</div>
+            <div class="stat-label">Model AUC</div>
           </div>
           <div class="stat-item">
-            <div class="stat-number" id="stat-2">0<span>.</span>84</div>
+            <div class="stat-number" id="stat-2">0<span>.</span>85</div>
             <div class="stat-label">Cox C-Index</div>
           </div>
           <div class="stat-item">
@@ -575,7 +573,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           </div>
           <div class="workflow-step-title">2. Risk Classification</div>
-          <div class="workflow-step-desc">XGBoost classifier returns Low, Medium, or High risk with confidence score.</div>
+          <div class="workflow-step-desc">Classifier returns Low, Medium, or High risk with confidence score.</div>
         </div>
         <div class="workflow-card reveal reveal-delay-2">
           <div class="workflow-icon">
@@ -756,9 +754,9 @@ document.querySelector('#heart-model')?.addEventListener('load', () => {
   const ticker = document.querySelector('.stats-ticker');
   if (!ticker) return;
   const configs = [
-    { id:'stat-0', target:918,  dec:0, suffix:'+' },
-    { id:'stat-1', target:0.91, dec:2, suffix:'' },
-    { id:'stat-2', target:0.84, dec:2, suffix:'' },
+    { id:'stat-0', target:1421,  dec:0, suffix:'' },
+    { id:'stat-1', target:0.99, dec:2, suffix:'' },
+    { id:'stat-2', target:0.85, dec:2, suffix:'' },
     { id:'stat-3', target:11,   dec:0, suffix:'' },
   ];
   let triggered = false;
